@@ -162,3 +162,74 @@ test('a purchase asks for the supplier, then the items, and a cash purchase skip
   sheet.querySelector('.es-next').click();
   assert.equal(q(), 'Paid from which account?');
 });
+
+const sprint3State = `state.paymentAccounts=[{id:'b1',name:'Sample bank',account_type:'Bank',bank_name:'HBL',opening_balance:100000},{id:'b2',name:'Second bank',account_type:'Bank',bank_name:'MCB',opening_balance:100000},{id:'cash',name:'Cash',account_type:'Cash',opening_balance:100000}];state.materials=[{id:'m1',name:'Plywood',unit:'sheet',default_unit_cost:100,tracking_type:'stock',opening_quantity:50}];state.expenseCategories=[{id:'e1',name:'Transport'},{id:'e2',name:'Fuel'}];`;
+
+test('withdraw cash skips the only cash account but still shows it on the review', async (t) => {
+  const { d, run } = setup(t);
+  run(sprint3State);
+  run(`openBankingTransfer('withdraw')`);
+  await wait(60);
+  const sheet = d.getElementById('bankTransferSheet'), q = () => sheet.querySelector('.es-q').textContent;
+  assert.equal(q(), 'Which bank did you take cash out of?');
+  assert.equal(sheet.querySelector('.es-count').textContent, 'Step 1 of 3');
+  const from = d.getElementById('bankTransferFrom');
+  from.value = 'b1';
+  from.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
+  await wait(300);
+  assert.equal(q(), 'How much?', 'the cash account is not asked');
+  sheet.querySelector('.es-next').click();
+  assert.equal(sheet.querySelector('.es-error').hidden, false, 'an empty amount is not accepted');
+  d.getElementById('bankTransferAmount').value = '1000';
+  sheet.querySelector('.es-next').click();
+  assert.equal(q(), 'Check and save');
+  const rows = Array.from(sheet.querySelectorAll('.es-row'));
+  const to = rows.find((r) => r.querySelector('span').textContent === 'To');
+  assert.ok(to && to.disabled, 'the fixed cash account is listed but cannot be changed');
+  assert.ok(!d.getElementById('bankTransferDetails').closest('.es-off'), 'the optional note is on the review screen');
+});
+
+test('bank to bank asks for both banks', async (t) => {
+  const { d, run } = setup(t);
+  run(sprint3State);
+  run(`openBankingTransfer('bank')`);
+  await wait(60);
+  const sheet = d.getElementById('bankTransferSheet');
+  assert.equal(sheet.querySelector('.es-count').textContent, 'Step 1 of 4');
+});
+
+test('any sheet titled "Edit …" keeps the full form', async (t) => {
+  const { d, run, visible } = setup(t);
+  run(sprint3State);
+  run(`openExpenseCharge()`);
+  await wait(60);
+  run(`closeSheets(true)`);
+  await wait(60);
+  run(`$('.sheet-head h2', $('#expenseChargeSheet')).textContent='Edit project expense'; openSheet('#expenseChargeSheet')`);
+  await wait(60);
+  assert.ok(visible(d.getElementById('expenseChargeAmount')));
+  assert.ok(visible(d.getElementById('expenseChargeForm').querySelector('.form-actions')));
+});
+
+test('a quote is asked step by step and ends on its own Save buttons', async (t) => {
+  const { d, run, visible } = setup(t);
+  run(sprint3State);
+  run(`openQuote()`);
+  await wait(60);
+  const sheet = d.getElementById('quoteSheet'), form = d.getElementById('quoteForm');
+  assert.equal(sheet.querySelector('.es-q').textContent, 'Which project is this quote for?');
+  assert.ok(!visible(form.querySelector('.stack-actions')), 'Save waits for the review');
+  const flow = d.defaultView.MughalSteps.flows.get('quoteForm');
+  flow.index = flow.config.steps.length - 1;
+  sheet.querySelector('.es-next').click();
+  assert.equal(sheet.querySelector('.es-q').textContent, 'Check and save');
+  assert.ok(visible(form.querySelector('.stack-actions')), 'Save and Save and download PDF are on the review');
+});
+
+test('returning material asks what came back', async (t) => {
+  const { d, run } = setup(t);
+  run(sprint3State);
+  run(`openMaterialAssignment('return')`);
+  await wait(60);
+  assert.match(d.getElementById('materialAssignmentSheet').querySelector('.es-q').textContent, /coming back from/);
+});
