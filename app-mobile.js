@@ -2903,7 +2903,7 @@ async function downloadCurrent(button) {
     throw new Error('PDF download is unavailable. Refresh with an internet connection.');
   node.classList.add('pdf-exporting');
   try {
-    await working('Preparing your PDF…', button, () => html2pdf().set(detailPdfOptions()).from(node).save());
+    await working('Preparing your PDF…', button, () => html2pdf().set(detailPdfOptions()).from(window.MughalI18n ? window.MughalI18n.pdfSource(node) : node).save());
     toast('PDF downloaded.');
   } finally {
     node.classList.remove('pdf-exporting');
@@ -2917,7 +2917,7 @@ async function shareCurrent(button) {
   node.classList.add('pdf-exporting');
   try {
     await working('Preparing PDF for WhatsApp…', button, async () => {
-      const worker = html2pdf().set(detailPdfOptions()).from(node);
+      const worker = html2pdf().set(detailPdfOptions()).from(window.MughalI18n ? window.MughalI18n.pdfSource(node) : node);
       if (typeof worker.outputPdf !== 'function')
         throw new Error('PDF sharing is not supported by this browser.');
       const blob = await worker.outputPdf('blob'),

@@ -1791,7 +1791,7 @@
     const node = reportPdfDocument();
     try {
       await working('Preparing report PDF…', button, () =>
-        html2pdf().set(reportPdfOptions()).from(node).save(),
+        html2pdf().set(reportPdfOptions()).from(window.MughalI18n ? window.MughalI18n.pdfSource(node) : node).save(),
       );
     } finally {
       node.remove();
@@ -1803,7 +1803,7 @@
       options = reportPdfOptions();
     try {
       await working('Preparing report for WhatsApp…', button, async () => {
-        const worker = html2pdf().set(options).from(node);
+        const worker = html2pdf().set(options).from(window.MughalI18n ? window.MughalI18n.pdfSource(node) : node);
         if (typeof worker.outputPdf !== 'function')
           throw new Error('PDF sharing is not supported by this browser.');
         const blob = await worker.outputPdf('blob'),
