@@ -35,8 +35,8 @@ This folder contains the complete testable V1 for customers, project quotations,
 3. The workflow in `.github/workflows/deploy-pages.yml` runs the automated tests first. The site deploys only when every test passes.
 4. Only the app's own files are published:
    - `index.html`, `offline.html`, `manifest.webmanifest`, `sw.js`, `config.js`
-   - `app-mobile.js`, `reports-mobile.js`, `mobile-controls.js`, `entry-steps.js`, `carpenter-loader.js`, `pwa.js`
-   - `mobile.css`, `reports-mobile.css`, `mobile-controls.css`, `print-branding.css`, `pwa.css`, `glass.css`, `entry-steps.css`, `carpenter-loader.css`
+   - `app-mobile.js`, `reports-mobile.js`, `mobile-controls.js`, `entry-steps.js`, `carpenter-loader.js`, `i18n-strings.js`, `i18n.js`, `pwa.js`
+   - `mobile.css`, `reports-mobile.css`, `mobile-controls.css`, `print-branding.css`, `pwa.css`, `glass.css`, `entry-steps.css`, `carpenter-loader.css`, `i18n.css`
    - the `assets/` folder
 
    SQL files, tests and documentation stay in the repository but are not served on the website. If you add a new runtime file, also add it to the "Collect app files only" step in the workflow.

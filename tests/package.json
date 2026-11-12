@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test": "node --test mobile-controls.test.cjs project-statements.test.cjs print-documents.test.cjs pwa.test.cjs entry-dialog-confirm.test.cjs data-loading.test.cjs business-details.test.cjs entry-steps.test.cjs carpenter-loader.test.cjs report-drill.test.cjs"
+    "test": "node --test mobile-controls.test.cjs project-statements.test.cjs print-documents.test.cjs pwa.test.cjs entry-dialog-confirm.test.cjs data-loading.test.cjs business-details.test.cjs entry-steps.test.cjs carpenter-loader.test.cjs report-drill.test.cjs i18n.test.cjs"
   },
   "devDependencies": {
     "jsdom": "26.1.0"
