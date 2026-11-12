@@ -1,0 +1,6352 @@
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const cfg = window.MUGHAL_CONFIG || {};
+const cloud = Boolean(cfg.supabaseUrl && cfg.supabasePublishableKey);
+const state = {
+  token: null,
+  refreshToken: null,
+  expiresAt: 0,
+  userId: null,
+  businessId: null,
+  business: null,
+  role: 'owner',
+  parties: [],
+  projects: [],
+  entries: [],
+  invoices: [],
+  paymentAccounts: [],
+  payments: [],
+  labourers: [],
+  labourAssignments: [],
+  labourWageSettlements: [],
+  labourWageSettlementItems: [],
+  materials: [],
+  materialMovements: [],
+  expenseCategories: [],
+  walkInOrders: [],
+  walkInEntries: [],
+  orderItems: [],
+  orderInvoiceItems: [],
+  suppliers: [],
+  purchaseBills: [],
+  purchaseBillItems: [],
+  detail: null,
+};
+const today = () => new Date().toISOString().slice(0, 10);
+const uid = () => crypto.randomUUID();
+const esc = (value = '') =>
+  String(
+    ['Not entered', 'Not set', 'No details', 'Speciality not set', 'No account number'].includes(
+      String(value ?? ''),
+    )
+      ? ''
+      : (value ?? ''),
+  ).replace(
+    /[&<>'"]/g,
+    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char],
+  );
+const money = (value) => `Rs. ${Number(value || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 })}`;
+const lineAmount = (quantity, rate) => Math.round(Number(quantity || 0) * Number(rate || 0) * 100) / 100;
+const qty = (value) => Number(value || 0).toLocaleString('en-PK', { maximumFractionDigits: 3 });
+const date = (value) =>
+  value
+    ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('en-PK', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '';
+const daysBetween = (start, end) =>
+  start && end
+    ? Math.max(0, Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000))
+    : '';
+const nextSerial = (prefix, rows, field) => {
+  const values = rows
+    .map((row) => String(row[field] || ''))
+    .map((value) => Number(value.match(/(\d+)$/)?.[1] || 0));
+  return `${prefix}-${String(Math.max(0, ...values) + 1).padStart(4, '0')}`;
+};
+const shortCode = (prefix, value) =>
+  `${prefix}-${String(value || 'NEW')
+    .replaceAll('-', '')
+    .slice(0, 8)
+    .toUpperCase()}`;
+const safeName = (value) =>
+  String(value || 'document')
+    .replace(/[^a-z0-9_-]+/gi, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
+const numberInputValue = (value) => (value == null ? '' : String(value));
+function blankDefaultNumberFields() {
+  $$('input[type="number"]:not([readonly])').forEach((input) => {
+    if (Number(input.defaultValue) === 0) {
+      input.defaultValue = '';
+      input.value = '';
+    }
+  });
+}
+const PRINT_BUSINESS_NAME = 'Mughal Interior and Decor';
+function setScreenHeader(screen, title) {
+  $('.topbar').setAttribute('data-screen', screen);
+  $('#screenTitle').textContent = title;
+}
+const DEFAULT_DISCLAIMER =
+  'Prices are subject to change until approval and advance payment. After approval, prices remain fixed unless scope of work or material/site costs change.';
+const documentDisclaimer = () => String(state.business?.document_disclaimer || DEFAULT_DISCLAIMER);
+// Print details come from the businesses table (see Edit print details); these defaults are used until they are saved.
+const DEFAULT_PRINT_DETAILS = {
+  document_proprietor: 'Ali Raza Mughal',
+  document_address: 'Akbar Road Basti Iqbal Nagar,\nNear Potato Society, Okara',
+  document_whatsapp: '03024441235',
+  partner_name: 'Banam Ali',
+};
+const printDetail = (field) => String(state.business?.[field] || '').trim() || DEFAULT_PRINT_DETAILS[field];
+const partnerName = () => printDetail('partner_name');
+const whatsappLink = (number) => {
+  const digits = String(number || '').replace(/\D/g, '');
+  return `https://wa.me/${digits.startsWith('0') ? `92${digits.slice(1)}` : digits}`;
+};
+const businessContact = () => {
+  const whatsapp = printDetail('document_whatsapp');
+  return `<div class="business-contact"><p class="business-address"><b>Proprietor ${esc(printDetail('document_proprietor'))}</b><span>${esc(printDetail('document_address')).replace(/\n/g, '<br>')}</span></p><a class="business-whatsapp" href="${esc(whatsappLink(whatsapp))}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ${esc(whatsapp)}"><img src="assets/whatsapp.svg" width="25" height="25" alt="WhatsApp"><span><small>WhatsApp</small><b>${esc(whatsapp)}</b></span></a></div>`;
+};
+function applyBusinessLabels() {
+  $$('[data-partner-name]').forEach((node) => {
+    if ('value' in node && node.tagName === 'INPUT') node.value = partnerName();
+    else node.textContent = partnerName();
+  });
+}
+const disclaimerFooter = () =>
+  `<footer class="document-disclaimer" data-disclaimer><div class="disclaimer-toggle" role="button" tabindex="0" data-toggle-disclaimer aria-expanded="false"><span><b>Disclaimer:</b> <i>${esc(documentDisclaimer())}</i></span><span class="disclaimer-actions"><span aria-hidden="true">Tap to read</span><button type="button" class="disclaimer-edit" data-edit-disclaimer aria-label="Edit disclaimer">✎</button></span></div></footer>`;
+const party = (id) => state.parties.find((row) => row.id === id);
+const project = (id) => state.projects.find((row) => row.id === id);
+const account = (id) => state.paymentAccounts.find((row) => row.id === id);
+const bankAccounts = () =>
+  state.paymentAccounts.filter((row) => row.account_type === 'Bank' && row.active !== false);
+const cashAccounts = () =>
+  state.paymentAccounts.filter((row) => row.account_type === 'Cash' && row.active !== false);
+const accountBalance = (id) =>
+  Number(account(id)?.opening_balance || 0) +
+  state.payments.reduce(
+    (total, row) =>
+      total +
+      (row.to_account_id === id ? Number(row.amount || 0) : 0) -
+      (row.from_account_id === id ? Number(row.amount || 0) : 0),
+    0,
+  );
+const accountHasActivity = (id) =>
+  state.payments.some((row) => row.from_account_id === id || row.to_account_id === id);
+const transferRows = () => state.payments.filter((row) => row.payment_type === 'transfer');
+const labourer = (id) => state.labourers.find((row) => row.id === id);
+const material = (id) => state.materials.find((row) => row.id === id);
+const isConsumable = (row) => row?.tracking_type === 'consumable';
+const movementValue = (row) => Number(row?.quantity || 0) * Number(row?.unit_cost || 0);
+const expenseCategory = (id) => state.expenseCategories.find((row) => row.id === id);
+const supplier = (id) => state.suppliers.find((row) => row.id === id);
+const purchaseBill = (id) => state.purchaseBills.find((row) => row.id === id);
+const purchaseLines = (id) => state.purchaseBillItems.filter((row) => row.purchase_bill_id === id);
+const purchaseBalance = (row) => Number(row.total_amount || 0) - Number(row.amount_paid || 0);
+const purchaseDue = (row) => Math.max(0, purchaseBalance(row));
+const supplierOpeningDue = (id) => {
+  const row = supplier(id);
+  return Math.max(0, Number(row?.opening_amount || 0) - Number(row?.opening_amount_paid || 0));
+};
+const supplierBalance = (id) =>
+  supplierOpeningDue(id) +
+  state.purchaseBills
+    .filter((row) => row.supplier_id === id && row.status === 'Posted')
+    .reduce((total, row) => total + purchaseBalance(row), 0);
+const projectLabel = (row) => `${row.name} - ${party(row.party_id)?.name || 'Unknown party'}`;
+const quotePrice = (row) =>
+  row.pricing_mode === 'both'
+    ? `${money(row.price_with_material)} / ${money(row.price_without_material)}`
+    : money(row.pricing_mode === 'without_material' ? row.price_without_material : row.price_with_material);
+const projectMetrics = (row) => {
+  const entries = state.entries.filter((item) => item.project_id === row.id),
+    sum = (type) =>
+      entries
+        .filter((item) => item.entry_type === type)
+        .reduce((total, item) => total + Number(item.amount || 0), 0),
+    increase = sum('scope_increase'),
+    decrease = sum('scope_decrease'),
+    original = Number(row.original_contract_amount || 0),
+    openingInvoice = Number(row.opening_invoice_amount || 0),
+    openingReceived = Number(row.opening_received_amount || 0),
+    openingReceivable = Number(row.opening_balance_receivable ?? openingInvoice - openingReceived),
+    openingExpenses = Number(row.opening_expenses_amount || 0),
+    openingMaterial = Number(row.opening_material_amount || 0),
+    openingLabour = Number(row.opening_labour_amount || 0),
+    openingProfit = Number(
+      row.opening_current_profit ?? openingInvoice - openingExpenses - openingMaterial - openingLabour,
+    );
+  return {
+    entries,
+    increase,
+    decrease,
+    original,
+    revised: original + increase - decrease,
+    openingInvoice,
+    openingReceived,
+    openingReceivable,
+    openingExpenses,
+    openingMaterial,
+    openingLabour,
+    openingProfit,
+    totalRevenue: openingInvoice + original + increase - decrease,
+  };
+};
+const projectHasOpening = (row) =>
+  Number(row?.opening_invoice_amount || 0) > 0 ||
+  Number(row?.opening_balance_receivable || 0) !== 0 ||
+  Number(row?.opening_current_profit || 0) !== 0;
+const projectFinanciallyActive = (row) => row?.status === 'Approved' || projectHasOpening(row);
+const projectBalance = (row) => {
+  const metric = projectMetrics(row);
+  return (
+    metric.openingReceivable +
+    metric.revised -
+    state.payments
+      .filter((payment) => payment.payment_type === 'customer_receipt' && payment.project_id === row.id)
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+  );
+};
+const materialMetrics = (row) => {
+  const movements = state.materialMovements.filter((item) => item.material_id === row.id),
+    value = isConsumable(row),
+    measure = (item) => (value ? movementValue(item) : Number(item.quantity || 0)),
+    opening = value ? Number(row.opening_amount || 0) : Number(row.opening_quantity || 0),
+    purchased = movements
+      .filter((item) => ['purchase', 'adjustment_in'].includes(item.movement_type))
+      .reduce((sum, item) => sum + measure(item), 0),
+    returned = movements
+      .filter((item) => ['walk_in_return', 'project_return'].includes(item.movement_type))
+      .reduce((sum, item) => sum + measure(item), 0),
+    used = movements
+      .filter((item) => ['project_issue', 'walk_in_issue', 'adjustment_out'].includes(item.movement_type))
+      .reduce((sum, item) => sum + measure(item), 0),
+    latest = [...movements]
+      .filter((item) => item.movement_type === 'purchase')
+      .sort((a, b) =>
+        `${b.movement_date}${b.created_at}`.localeCompare(`${a.movement_date}${a.created_at}`),
+      )[0];
+  return {
+    stock: opening + purchased + returned - used,
+    opening,
+    purchased,
+    returned,
+    used,
+    unitCost: value ? 1 : Number(latest?.unit_cost ?? row.opening_rate ?? row.default_unit_cost ?? 0),
+  };
+};
+const walkInOrder = (id) => state.walkInOrders.find((row) => row.id === id);
+const orderLabel = (row) => `${row.order_number} - ${row.customer_name}`;
+const orderInvoice = (row) => state.invoices.find((invoice) => invoice.walk_in_order_id === row.id);
+const orderLines = (id) =>
+  state.orderInvoiceItems
+    .filter((row) => row.walk_in_order_id === id)
+    .sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
+const orderDue = (row) =>
+  Number(row.amount || 0) -
+  state.walkInEntries
+    .filter((entry) => entry.walk_in_order_id === row.id && entry.entry_type === 'receipt')
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+const assignmentAmount = (row) => Number(row.amount ?? Number(row.days || 0) * Number(row.daily_rate || 0));
+const assignmentPaidAmount = (id) =>
+  state.labourWageSettlementItems
+    .filter((row) => row.labour_assignment_id === id)
+    .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+const assignmentOutstanding = (row) => Math.max(0, assignmentAmount(row) - assignmentPaidAmount(row.id));
+const unpaidAssignments = (labourerId) =>
+  state.labourAssignments.filter(
+    (row) => row.labourer_id === labourerId && assignmentOutstanding(row) > 0.005,
+  );
+const labourAdvancePaid = (labourerId) =>
+  state.payments
+    .filter((row) => row.payment_type === 'labour_advance' && row.labourer_id === labourerId)
+    .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+const labourAdvanceApplied = (labourerId) =>
+  state.labourWageSettlements
+    .filter((row) => row.labourer_id === labourerId)
+    .reduce((sum, row) => sum + Number(row.advance_applied || 0), 0);
+const labourAdvanceAvailable = (labourerId) =>
+  Math.max(0, labourAdvancePaid(labourerId) - labourAdvanceApplied(labourerId));
+const labourUnpaidTotal = (labourerId) =>
+  unpaidAssignments(labourerId).reduce((sum, row) => sum + assignmentOutstanding(row), 0);
+const labourTaskLabel = (row) => {
+  const job = project(row.project_id),
+    order = walkInOrder(row.walk_in_order_id);
+  return job ? projectLabel(job) : order ? orderLabel(order) : 'Assigned task';
+};
+
+// Tables loaded into state. `order` is the list order; `activeOnly` hides archived rows.
+const SYNC_TABLES = [
+  { key: 'parties', table: 'parties', order: 'name.asc' },
+  { key: 'projects', table: 'projects', order: 'created_at.desc' },
+  { key: 'entries', table: 'project_entries', order: 'entry_date.desc,created_at.desc' },
+  { key: 'invoices', table: 'invoices', order: 'created_at.desc' },
+  { key: 'paymentAccounts', table: 'payment_accounts', order: 'name.asc', activeOnly: true },
+  { key: 'payments', table: 'payments', order: 'payment_date.desc,created_at.desc' },
+  { key: 'labourers', table: 'labourers', order: 'name.asc' },
+  { key: 'labourAssignments', table: 'labour_assignments', order: 'assignment_date.desc,created_at.desc' },
+  {
+    key: 'labourWageSettlements',
+    table: 'labour_wage_settlements',
+    order: 'settlement_date.desc,created_at.desc',
+  },
+  { key: 'labourWageSettlementItems', table: 'labour_wage_settlement_items', order: 'created_at.desc' },
+  { key: 'materials', table: 'materials', order: 'name.asc', activeOnly: true },
+  { key: 'materialMovements', table: 'material_movements', order: 'movement_date.desc,created_at.desc' },
+  { key: 'expenseCategories', table: 'expense_categories', order: 'name.asc', activeOnly: true },
+  { key: 'walkInOrders', table: 'walk_in_orders', order: 'order_date.desc,created_at.desc' },
+  { key: 'walkInEntries', table: 'walk_in_order_entries', order: 'entry_date.desc,created_at.desc' },
+  { key: 'orderItems', table: 'order_items', order: 'name.asc', activeOnly: true },
+  { key: 'orderInvoiceItems', table: 'order_invoice_items', order: 'sort_order.asc' },
+  { key: 'suppliers', table: 'suppliers', order: 'name.asc', activeOnly: true },
+  { key: 'purchaseBills', table: 'purchase_bills', order: 'bill_date.desc,created_at.desc' },
+  { key: 'purchaseBillItems', table: 'purchase_bill_items', order: 'created_at.asc' },
+];
+// Re-read rows stamped slightly before the last seen change, to cover saves that were
+// still committing during the previous refresh. Duplicates are merged by id.
+const SYNC_OVERLAP_MS = 2 * 60 * 1000;
+function latestUpdate(rows, fallback = null) {
+  return rows.reduce(
+    (latest, row) => (row.updated_at && (!latest || row.updated_at > latest) ? row.updated_at : latest),
+    fallback,
+  );
+}
+// Same ordering as PostgREST `order=`: nulls last when ascending, first when descending; id breaks ties.
+function compareByOrder(order) {
+  const fields = `${order},id.asc`.split(',').map((part) => {
+    const [field, direction] = part.split('.');
+    return { field, desc: direction === 'desc' };
+  });
+  return (a, b) => {
+    for (const { field, desc } of fields) {
+      const x = a[field],
+        y = b[field];
+      if (x == null && y == null) continue;
+      if (x == null) return desc ? -1 : 1;
+      if (y == null) return desc ? 1 : -1;
+      const result =
+        typeof x === 'number' && typeof y === 'number'
+          ? x - y
+          : String(x).localeCompare(String(y), 'en', { numeric: true, sensitivity: 'base' });
+      if (result) return desc ? -result : result;
+    }
+    return 0;
+  };
+}
+function mergeRows(current, changed, removedIds, { order, activeOnly }) {
+  const byId = new Map(current.map((row) => [row.id, row]));
+  changed.forEach((row) => byId.set(row.id, row));
+  removedIds.forEach((id) => byId.delete(id));
+  return [...byId.values()].filter((row) => !activeOnly || row.active !== false).sort(compareByOrder(order));
+}
+class Store {
+  constructor() {
+    this.base = (cfg.supabaseUrl || '').replace(/\/$/, '');
+    this.key = cfg.supabasePublishableKey || '';
+  }
+  headers(extra = {}) {
+    return {
+      apikey: this.key,
+      Authorization: `Bearer ${state.token}`,
+      'Content-Type': 'application/json',
+      ...extra,
+    };
+  }
+  async send(path, options = {}, retried = false) {
+    await this.ensureFreshSession();
+    const response = await fetch(`${this.base}${path}`, {
+      ...options,
+      headers: this.headers(options.headers),
+    });
+    if (response.status === 401 && !retried && state.refreshToken && (await this.refreshSession()))
+      return this.send(path, options, true);
+    if (response.status === 401) {
+      logout(false);
+      throw new Error('Your session expired. Please sign in again.');
+    }
+    if (response.status === 416) return response;
+    if (!response.ok) {
+      let message = 'The action could not be completed.';
+      try {
+        const data = await response.json();
+        message = data.message || data.details || data.hint || message;
+      } catch {}
+      throw new Error(message);
+    }
+    return response;
+  }
+  async request(path, options = {}) {
+    const response = await this.send(path, options);
+    return response.status === 204 ? null : response.json();
+  }
+  // Supabase caps each response (1,000 rows by default). Fetch every page so ledgers and reports are never silently cut short.
+  async requestAll(path, pageSize = 1000) {
+    const rows = [];
+    for (;;) {
+      const from = rows.length,
+        response = await this.send(
+          `${path}${path.includes('?') ? '&' : '?'}limit=${pageSize}&offset=${from}`,
+          { headers: { Prefer: 'count=exact' } },
+        );
+      if (response.status === 416 || response.status === 204) return rows;
+      const page = await response.json(),
+        total = Number(String(response.headers.get('Content-Range') || '').split('/')[1]);
+      rows.push(...page);
+      if (!page.length || (Number.isFinite(total) && rows.length >= total)) return rows;
+    }
+  }
+  saveSession() {
+    localStorage.setItem(
+      'mi_mobile_session',
+      JSON.stringify({
+        token: state.token,
+        refreshToken: state.refreshToken,
+        expiresAt: state.expiresAt,
+        userId: state.userId,
+      }),
+    );
+  }
+  applySession(data) {
+    state.token = data.access_token;
+    state.refreshToken = data.refresh_token || state.refreshToken;
+    state.expiresAt =
+      Number(data.expires_at) || Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600);
+    if (data.user?.id) state.userId = data.user.id;
+    this.saveSession();
+  }
+  async ensureFreshSession() {
+    if (cloud && state.refreshToken && state.expiresAt && Date.now() / 1000 > state.expiresAt - 60)
+      await this.refreshSession();
+  }
+  refreshSession() {
+    if (!this.refreshing)
+      this.refreshing = (async () => {
+        try {
+          const response = await fetch(`${this.base}/auth/v1/token?grant_type=refresh_token`, {
+            method: 'POST',
+            headers: { apikey: this.key, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: state.refreshToken }),
+          });
+          if (!response.ok) return false;
+          this.applySession(await response.json());
+          return true;
+        } catch {
+          return false;
+        } finally {
+          this.refreshing = null;
+        }
+      })();
+    return this.refreshing;
+  }
+  async signIn(email, password) {
+    const response = await fetch(`${this.base}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: { apikey: this.key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      }),
+      data = await response.json();
+    if (!response.ok)
+      throw new Error(data.error_description || data.msg || 'Email or password is incorrect.');
+    this.applySession(data);
+  }
+  async load() {
+    if (!cloud) {
+      const saved = JSON.parse(localStorage.getItem('mi_mobile_data') || '{}');
+      state.businessId = 'demo';
+      state.role = 'owner';
+      state.business = saved.business || { name: 'Mughal Interior' };
+      [
+        'parties',
+        'projects',
+        'entries',
+        'invoices',
+        'paymentAccounts',
+        'payments',
+        'labourers',
+        'labourAssignments',
+        'labourWageSettlements',
+        'labourWageSettlementItems',
+        'materials',
+        'materialMovements',
+        'expenseCategories',
+        'walkInOrders',
+        'walkInEntries',
+        'orderItems',
+        'orderInvoiceItems',
+        'suppliers',
+        'purchaseBills',
+        'purchaseBillItems',
+      ].forEach((key) => (state[key] = saved[key] || []));
+      return;
+    }
+    if (this.sync && this.sync.businessId === state.businessId && state.userId === this.sync.userId) {
+      try {
+        await this.refresh();
+        return;
+      } catch (error) {
+        console.warn('Quick refresh failed, reloading everything.', error);
+      }
+    }
+    await this.fullLoad();
+  }
+  // Full download of every table. Used on start-up, and whenever quick refresh is unavailable.
+  async fullLoad() {
+    this.sync = null;
+    const memberships = await this.request(
+      `/rest/v1/business_members?select=business_id,role&user_id=eq.${state.userId}&order=created_at.desc&limit=1`,
+    );
+    if (!memberships.length) throw new Error('This account has not been added to a business.');
+    state.businessId = memberships[0].business_id;
+    state.role = memberships[0].role;
+    // Read the deletion cursor before the tables, so no deletion can slip between the two.
+    const deletionCursor = await this.deletionCursor();
+    const results = await Promise.all(
+      SYNC_TABLES.map(({ table, order, activeOnly }) =>
+        this.requestAll(
+          `/rest/v1/${table}?select=*&business_id=eq.${state.businessId}${activeOnly ? '&active=eq.true' : ''}&order=${order},id.asc`,
+        ),
+      ),
+    );
+    SYNC_TABLES.forEach(({ key }, index) => (state[key] = results[index]));
+    await this.loadBusiness();
+    if (deletionCursor !== null)
+      this.sync = {
+        businessId: state.businessId,
+        userId: state.userId,
+        deletionCursor,
+        since: Object.fromEntries(SYNC_TABLES.map(({ key }) => [key, latestUpdate(state[key])])),
+      };
+  }
+  async loadBusiness() {
+    const businesses = await this.request(`/rest/v1/businesses?select=*&id=eq.${state.businessId}&limit=1`);
+    state.business = businesses[0] || { name: 'Mughal Interior' };
+  }
+  // Returns the newest deletion-log id, or null when the database has no deletion log yet
+  // (migration 20261110000000 not run); then every reload stays a full download.
+  async deletionCursor() {
+    try {
+      const rows = await this.request(
+        `/rest/v1/sync_deletions?select=id&business_id=eq.${state.businessId}&order=id.desc&limit=1`,
+      );
+      return Number(rows[0]?.id || 0);
+    } catch {
+      return null;
+    }
+  }
+  // Quick refresh after a save: fetch only rows changed or deleted since the last load.
+  // Database triggers stamp updated_at on every insert/update and log every delete, so
+  // side effects of a save (ledger entries, stock, balances) are picked up as well.
+  async refresh() {
+    const sync = this.sync,
+      bid = state.businessId;
+    const [deletions, ...changes] = await Promise.all([
+      this.requestAll(
+        `/rest/v1/sync_deletions?select=id,table_name,row_id&business_id=eq.${bid}&id=gt.${sync.deletionCursor}&order=id.asc`,
+      ),
+      ...SYNC_TABLES.map(({ key, table }) => {
+        const since = sync.since[key];
+        const filter = since
+          ? `&updated_at=gte.${encodeURIComponent(new Date(Date.parse(since) - SYNC_OVERLAP_MS).toISOString())}`
+          : '';
+        return this.requestAll(
+          `/rest/v1/${table}?select=*&business_id=eq.${bid}${filter}&order=updated_at.asc,id.asc`,
+        );
+      }),
+    ]);
+    const next = { ...sync, since: { ...sync.since } };
+    SYNC_TABLES.forEach((config, index) => {
+      const removed = new Set(
+        deletions.filter((row) => row.table_name === config.table).map((row) => row.row_id),
+      );
+      if (!changes[index].length && !removed.size) return;
+      state[config.key] = mergeRows(state[config.key], changes[index], removed, config);
+      next.since[config.key] = latestUpdate(changes[index], sync.since[config.key]);
+    });
+    if (deletions.length) next.deletionCursor = Number(deletions[deletions.length - 1].id);
+    await this.loadBusiness();
+    this.sync = next;
+  }
+  persist() {
+    if (!cloud)
+      localStorage.setItem(
+        'mi_mobile_data',
+        JSON.stringify({
+          business: state.business,
+          parties: state.parties,
+          projects: state.projects,
+          entries: state.entries,
+          invoices: state.invoices,
+          paymentAccounts: state.paymentAccounts,
+          payments: state.payments,
+          labourers: state.labourers,
+          labourAssignments: state.labourAssignments,
+          labourWageSettlements: state.labourWageSettlements,
+          labourWageSettlementItems: state.labourWageSettlementItems,
+          materials: state.materials,
+          materialMovements: state.materialMovements,
+          expenseCategories: state.expenseCategories,
+          walkInOrders: state.walkInOrders,
+          walkInEntries: state.walkInEntries,
+          orderItems: state.orderItems,
+          orderInvoiceItems: state.orderInvoiceItems,
+          suppliers: state.suppliers,
+          purchaseBills: state.purchaseBills,
+          purchaseBillItems: state.purchaseBillItems,
+        }),
+      );
+  }
+  async save(table, row, updating = false) {
+    if (!cloud) return { ...row, business_id: state.businessId, updated_at: new Date().toISOString() };
+    const payload = { ...row, business_id: state.businessId },
+      path = updating ? `/rest/v1/${table}?id=eq.${row.id}` : `/rest/v1/${table}`,
+      result = await this.request(path, {
+        method: updating ? 'PATCH' : 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(payload),
+      });
+    return result[0];
+  }
+  async updateBusiness(changes) {
+    if (!cloud) return { ...state.business, ...changes, updated_at: new Date().toISOString() };
+    const result = await this.request(`/rest/v1/businesses?id=eq.${state.businessId}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(changes),
+    });
+    if (!result?.length) throw new Error('Only an owner or manager can update the print details.');
+    return result[0];
+  }
+  async remove(table, id) {
+    if (!cloud) return;
+    const removed = await this.request(`/rest/v1/${table}?id=eq.${id}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=representation' },
+    });
+    if (!removed?.length) throw new Error('Only the business owner can delete this record.');
+  }
+  async rpc(name, payload) {
+    return this.request(`/rest/v1/rpc/${name}`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+}
+const store = new Store();
+
+function toast(message) {
+  const node = $('#toast');
+  node.textContent = message;
+  node.classList.remove('hidden');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => node.classList.add('hidden'), 3200);
+}
+let isSaving = false,
+  activeEntrySheet = null,
+  activeSheetSnapshot = null;
+async function working(label, button, action) {
+  const overlay = $('#processing'),
+    old = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.classList.add('processing');
+    button.textContent = 'Please wait…';
+  }
+  $('#processingText').textContent = label;
+  overlay.classList.remove('hidden');
+  isSaving = true;
+  try {
+    return await action();
+  } catch (error) {
+    toast(error.message);
+    throw error;
+  } finally {
+    isSaving = false;
+    overlay.classList.add('hidden');
+    if (button) {
+      button.disabled = false;
+      button.classList.remove('processing');
+      button.textContent = old;
+    }
+  }
+}
+function getFormInteractiveElements(form) {
+  if (!form) return [];
+  return Array.from(
+    form.querySelectorAll(
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea',
+    ),
+  ).filter((el) => !el.readOnly);
+}
+function captureSheetSnapshot(sheet) {
+  if (!sheet) return null;
+  const form = sheet.querySelector('form');
+  if (!form) return null;
+  const elements = getFormInteractiveElements(form);
+  const fields = elements.map((el) => ({ el, value: el.value, checked: el.checked, type: el.type }));
+  const lineCount = form.querySelectorAll('.invoice-line,[data-material-bulk-line]').length;
+  return { form, fields, lineCount };
+}
+function getActiveEntrySheet() {
+  const visible = $$('.sheet:not(.hidden)');
+  return visible.find((s) => s.querySelector('form')) || null;
+}
+function isSheetDirty(sheet) {
+  if (!sheet || sheet.classList.contains('hidden')) return false;
+  const form = sheet.querySelector('form');
+  if (!form) return false;
+  if (!activeSheetSnapshot || activeSheetSnapshot.form !== form) {
+    activeSheetSnapshot = captureSheetSnapshot(sheet);
+    return false;
+  }
+  const currentLineCount = form.querySelectorAll('.invoice-line,[data-material-bulk-line]').length;
+  if (currentLineCount !== activeSheetSnapshot.lineCount) return true;
+  const elements = getFormInteractiveElements(form);
+  if (elements.length !== activeSheetSnapshot.fields.length) return true;
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i],
+      snap = activeSheetSnapshot.fields[i];
+    if (el !== snap.el) return true;
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      if (el.checked !== snap.checked) return true;
+    } else if (el.value !== snap.value) return true;
+  }
+  return false;
+}
+function openSheet(id) {
+  $('#backdrop').classList.remove('hidden');
+  const sheet = $(id);
+  sheet.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  if (sheet?.querySelector('form')) {
+    activeEntrySheet = sheet;
+    activeSheetSnapshot = captureSheetSnapshot(sheet);
+    queueMicrotask(() => {
+      if (activeEntrySheet === sheet) activeSheetSnapshot = captureSheetSnapshot(sheet);
+    });
+  } else {
+    activeEntrySheet = null;
+    activeSheetSnapshot = null;
+  }
+  window.MughalControls?.refresh();
+}
+function closeSheets(force = false) {
+  if (!force && !isSaving) {
+    const active = getActiveEntrySheet();
+    if (active && isSheetDirty(active)) {
+      if (!confirm('Discard unsaved changes?')) return false;
+      const form = active.querySelector('form');
+      if (form) form.reset();
+    }
+  }
+  activeSheetSnapshot = null;
+  activeEntrySheet = null;
+  $('#backdrop').classList.add('hidden');
+  $$('.sheet').forEach((node) => node.classList.add('hidden'));
+  document.body.style.overflow = '';
+  return true;
+}
+function route(name) {
+  const map = {
+    projectsHub: 'Projects',
+    parties: 'Parties',
+    projectMaster: 'Projects',
+    quotes: 'Quotes',
+    invoices: 'Invoices',
+    receipts: 'Receive payments',
+    labour: 'Assign labour',
+    materials: 'Assign material',
+    expenses: 'Charge expenses',
+    orders: 'Orders',
+    orderInvoices: 'Order invoices',
+    orderReceipts: 'Order receipts',
+    orderExpenses: 'Order expenses',
+    orderMaterials: 'Order materials',
+    orderLabour: 'Order labour',
+    orderItems: 'Order items',
+    purchasing: 'Purchasing',
+    purchaseSuppliers: 'Suppliers',
+    purchaseMaterials: 'Material',
+    purchases: 'Purchases',
+    cashPurchasing: 'Cash Purchasing',
+    consumablePool: 'Consumable Pool',
+    purchasePayments: 'Purchase payments',
+    labourPayments: 'Labour',
+    banking: 'Banking',
+    bankAccounts: 'List of Banks',
+    cashWithdrawals: 'Withdraw cash',
+    cashDeposits: 'Deposit cash',
+    bankTransfers: 'Bank to Bank',
+    bankingExpenses: 'Expenses',
+    reports: 'Reports',
+  };
+  $$('.view').forEach((node) => node.classList.toggle('active', node.id === `${name}View`));
+  setScreenHeader(name, map[name] || 'Projects');
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  render();
+}
+function tab(name) {
+  $$('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === name));
+  route(name);
+}
+function empty(title, text) {
+  return `<div class="empty"><b>${esc(title)}</b><span>${esc(text)}</span></div>`;
+}
+function upsert(list, row) {
+  const index = list.findIndex((item) => item.id === row.id);
+  index >= 0 ? list.splice(index, 1, row) : list.unshift(row);
+  store.persist();
+}
+function options(rows, label, placeholder = 'Select an option') {
+  return `<option value="">${esc(placeholder)}</option>${rows.map((row) => `<option value="${row.id}">${esc(label(row))}</option>`).join('')}`;
+}
+
+function renderParties() {
+  const q = $('#partySearch').value.toLowerCase(),
+    rows = state.parties.filter((r) =>
+      [r.party_number, r.name, r.phone, r.address].join(' ').toLowerCase().includes(q),
+    );
+  $('#partyList').innerHTML = rows.length
+    ? rows
+        .map(
+          (r) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.party_number || shortCode('PTY', r.id))}</span><h3>${esc(r.name)}</h3><div class="record-meta">${r.phone ? `<span>${esc(r.phone)}</span>` : ''}${r.address ? `<span>${esc(r.address)}</span>` : ''}</div></div><button class="view-button" data-view-party="${r.id}">View</button></div></article>`,
+        )
+        .join('')
+    : empty('No parties found', 'Add your first customer.');
+}
+function renderProjects() {
+  const q = $('#projectSearch').value.toLowerCase(),
+    rows = state.projects.filter((r) =>
+      [r.project_number, r.name, r.location, party(r.party_id)?.name].join(' ').toLowerCase().includes(q),
+    );
+  $('#projectList').innerHTML = rows.length
+    ? rows
+        .map(
+          (r) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.project_number || shortCode('PRJ', r.id))}</span><h3>${esc(r.name)}</h3><div class="record-meta"><span>${esc(party(r.party_id)?.name || 'Unknown party')}</span>${r.location ? `<span>${esc(r.location)}</span>` : ''}<span class="status ${r.closed ? 'closed' : 'active'}">${r.closed ? 'Closed' : 'Active'}</span><span>${r.quote_created ? 'Quote added' : 'No quote'}</span></div></div><button class="view-button" data-view-project="${r.id}">View</button></div></article>`,
+        )
+        .join('')
+    : empty('No projects found', 'Add a project record to begin.');
+}
+function renderQuotes() {
+  const q = $('#quoteSearch').value.toLowerCase(),
+    rows = state.projects.filter(
+      (r) =>
+        r.quote_created &&
+        [r.project_number, r.name, party(r.party_id)?.name].join(' ').toLowerCase().includes(q),
+    );
+  $('#quoteList').innerHTML = rows.length
+    ? rows
+        .map(
+          (r) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.project_number)}</span><h3>${esc(r.name)}</h3><div class="record-meta"><span>${esc(party(r.party_id)?.name || 'Unknown party')}</span><span>${date(r.quote_date)}</span><span>${quotePrice(r)}</span></div></div><div class="record-side"><span class="status ${String(r.status || 'pending').toLowerCase()}">${esc(r.status)}</span><button class="view-button" data-view-quote="${r.id}">View</button></div></div></article>`,
+        )
+        .join('')
+    : empty('No quotes found', 'Add a quote for a saved project.');
+}
+function renderInvoices() {
+  const q = $('#invoiceSearch').value.toLowerCase(),
+    rows = state.invoices
+      .filter((r) => r.project_id)
+      .filter((r) => {
+        const job = project(r.project_id);
+        return [r.invoice_number, job?.name, party(job?.party_id)?.name].join(' ').toLowerCase().includes(q);
+      });
+  $('#invoiceList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const job = project(r.project_id),
+            total = job ? projectMetrics(job).revised : r.amount;
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.invoice_number)}</span><h3>${esc(job?.name || 'Project invoice')}</h3><div class="record-meta"><span>${esc(party(job?.party_id)?.name || 'Unknown party')}</span><span>${date(r.invoice_date)}</span></div></div><div class="record-side"><strong>${money(total)}</strong><button class="view-button" data-view-invoice="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No invoices found', 'Approved quotes appear here automatically.');
+}
+function renderReceipts() {
+  const q = $('#receiptSearch').value.toLowerCase(),
+    rows = state.payments
+      .filter((r) => r.payment_type === 'customer_receipt' && r.project_id)
+      .filter((r) => {
+        const job = project(r.project_id);
+        return [r.payment_number, r.description, job?.name, party(r.party_id)?.name]
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      });
+  $('#receiptList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const job = project(r.project_id);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.payment_number || shortCode('RCP', r.id))}</span><h3>${esc(job?.name || 'Project receipt')}</h3><div class="record-meta"><span>${esc(party(r.party_id)?.name || 'Unknown party')}</span><span>${date(r.payment_date)}</span><span>${esc(account(r.to_account_id)?.name || 'Account')}</span></div></div><div class="record-side"><strong class="record-total">${money(r.amount)}</strong><button class="view-button" data-view-receipt="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No payments received', 'Record the first project receipt.');
+}
+function renderLabour() {
+  $('#labourPersonList').innerHTML = state.labourers.length
+    ? state.labourers
+        .map(
+          (r) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.labour_number || date(r.joining_date || r.record_date || r.created_at))}</span><h3>${esc(r.name)}</h3><div class="record-meta">${r.speciality ? `<span>${esc(r.speciality)}</span>` : ''}${r.mobile ? `<span>${esc(r.mobile)}</span>` : ''}<span>${money(r.daily_wage_rate)} daily</span></div></div><button class="view-button" data-view-labour-person="${r.id}">View</button></div></article>`,
+        )
+        .join('')
+    : empty('No labour persons', 'Add a labour person before assigning wages.');
+  $('#labourAssignmentList').innerHTML = state.labourAssignments.filter((r) => r.project_id).length
+    ? state.labourAssignments
+        .filter((r) => r.project_id)
+        .map((r) => {
+          const job = project(r.project_id),
+            worker = labourer(r.labourer_id);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${date(r.assignment_date)}</span><h3>${esc(worker?.name || 'Labour')}</h3><div class="record-meta"><span>${esc(job ? projectLabel(job) : '')}</span><span>${Number(r.days) === 0.5 ? 'Half day' : 'Full day'}</span></div></div><div class="record-side"><strong>${money(r.amount ?? Number(r.days) * Number(r.daily_rate))}</strong><button class="view-button" data-view-labour-assignment="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No labour assigned', 'Assign a labour person to an approved project.');
+}
+function renderMaterials() {
+  const q = $('#materialAssignmentSearch').value.toLowerCase(),
+    rows = state.materialMovements
+      .filter((r) => ['project_issue', 'project_return'].includes(r.movement_type))
+      .filter((r) => {
+        const job = project(r.project_id);
+        return [material(r.material_id)?.name, job?.name, party(job?.party_id)?.name, r.notes]
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      });
+  $('#materialAssignmentList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const item = material(r.material_id),
+            job = project(r.project_id),
+            returned = r.movement_type === 'project_return',
+            pool = isConsumable(item);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${date(r.movement_date)}</span><h3>${esc(item?.name || 'Material')} <span class="inline-badge">${returned ? 'Returned' : 'Assigned'}</span></h3><div class="record-meta"><span>${esc(job ? projectLabel(job) : '')}</span><span>${pool ? money(movementValue(r)) : `${qty(r.quantity)} ${esc(item?.unit || 'units')}`}</span>${r.notes ? `<span>${esc(r.notes)}</span>` : ''}</div></div><div class="record-side"><strong class="${returned ? 'positive' : ''}">${returned ? '+' : '−'} ${money(movementValue(r))}</strong><button class="view-button" data-view-material-assignment="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No material activity', 'Assign purchased material or record a return.');
+}
+function renderExpenses() {
+  $('#expenseCategoryList').innerHTML = state.expenseCategories.length
+    ? state.expenseCategories
+        .map(
+          (r) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">EXPENSE MASTER</span><h3>${esc(r.name)}</h3><div class="record-meta"><span>${esc(r.description || 'No details')}</span></div></div><button class="view-button" data-view-expense-category="${r.id}">View</button></div></article>`,
+        )
+        .join('')
+    : empty('No expense types', 'Add the first project expense type.');
+  const charges = state.entries.filter((r) => r.entry_type === 'expense');
+  $('#expenseChargeList').innerHTML = charges.length
+    ? charges
+        .map((r) => {
+          const job = project(r.project_id),
+            cat = expenseCategory(r.expense_category_id);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${date(r.entry_date)}</span><h3>${esc(cat?.name || r.description)}</h3><div class="record-meta"><span>${esc(job ? projectLabel(job) : 'Project')}</span>${r.notes ? `<span>${esc(r.notes)}</span>` : ''}</div></div><div class="record-side"><strong>${money(r.amount)}</strong><button class="view-button" data-view-expense-charge="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No expenses charged', 'Charge an expense to an approved project.');
+}
+function renderOrderInvoices() {
+  const q = $('#orderInvoiceSearch').value.toLowerCase(),
+    rows = state.walkInOrders
+      .filter((r) => orderInvoice(r))
+      .filter((r) =>
+        [r.order_number, r.customer_name, r.customer_phone, orderInvoice(r)?.invoice_number]
+          .join(' ')
+          .toLowerCase()
+          .includes(q),
+      );
+  $('#orderInvoiceList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const invoice = orderInvoice(r);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(invoice?.invoice_number || r.order_number)}</span><h3>${esc(r.customer_name)}</h3><div class="record-meta"><span>${date(invoice?.invoice_date || r.order_date)}</span>${r.customer_phone ? `<span>${esc(r.customer_phone)}</span>` : ''}<span>${orderLines(r.id).length} items</span></div></div><div class="record-side"><strong>${money(r.amount)}</strong><button class="view-button" data-view-order-invoice="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No order invoices', 'Create the first direct customer invoice.');
+}
+function renderOrderReceipts() {
+  const q = $('#orderReceiptSearch').value.toLowerCase(),
+    rows = state.payments
+      .filter((r) => r.payment_type === 'customer_receipt' && r.walk_in_order_id)
+      .filter((r) => {
+        const order = walkInOrder(r.walk_in_order_id);
+        return [r.payment_number, r.description, order?.order_number, order?.customer_name]
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      });
+  $('#orderReceiptList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const order = walkInOrder(r.walk_in_order_id);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.payment_number)}</span><h3>${esc(order?.customer_name || 'Order receipt')}</h3><div class="record-meta"><span>${esc(order?.order_number || 'Order')}</span><span>${date(r.payment_date)}</span><span>${esc(account(r.to_account_id)?.name || 'Account')}</span></div></div><div class="record-side"><strong class="record-total">${money(r.amount)}</strong><button class="view-button" data-view-order-receipt="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No order receipts', 'Receive the first payment against an order.');
+}
+function renderOrderExpenses() {
+  $('#orderExpenseCategoryList').innerHTML = $('#expenseCategoryList').innerHTML;
+  const rows = state.walkInEntries.filter((r) => r.entry_type === 'expense');
+  $('#orderExpenseChargeList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const order = walkInOrder(r.walk_in_order_id),
+            cat = expenseCategory(r.expense_category_id);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${date(r.entry_date)}</span><h3>${esc(cat?.name || r.description)}</h3><div class="record-meta"><span>${esc(order ? orderLabel(order) : 'Order')}</span>${r.notes ? `<span>${esc(r.notes)}</span>` : ''}</div></div><div class="record-side"><strong>${money(r.amount)}</strong><button class="view-button" data-view-order-expense="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No order expenses', 'Assign an expense to an order.');
+}
+function renderOrderMaterials() {
+  const q = $('#orderMaterialSearch').value.toLowerCase(),
+    rows = state.materialMovements
+      .filter((r) => ['walk_in_issue', 'walk_in_return'].includes(r.movement_type))
+      .filter((r) => {
+        const order = walkInOrder(r.walk_in_order_id);
+        return [material(r.material_id)?.name, order?.customer_name, order?.order_number, r.notes]
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      });
+  $('#orderMaterialList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const order = walkInOrder(r.walk_in_order_id),
+            item = material(r.material_id),
+            returned = r.movement_type === 'walk_in_return',
+            pool = isConsumable(item);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${date(r.movement_date)}</span><h3>${esc(item?.name || 'Material')} <span class="inline-badge">${returned ? 'Returned' : 'Assigned'}</span></h3><div class="record-meta"><span>${esc(order ? orderLabel(order) : 'Order')}</span><span>${pool ? money(movementValue(r)) : `${qty(r.quantity)} ${esc(item?.unit || 'units')}`}</span>${r.notes ? `<span>${esc(r.notes)}</span>` : ''}</div></div><div class="record-side"><strong class="${returned ? 'positive' : ''}">${returned ? '+' : '−'} ${money(movementValue(r))}</strong><button class="view-button" data-view-order-material="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No order material activity', 'Assign purchased material or record a return.');
+}
+function renderOrderLabour() {
+  $('#orderLabourPersonList').innerHTML = $('#labourPersonList').innerHTML;
+  const rows = state.labourAssignments.filter((r) => r.walk_in_order_id);
+  $('#orderLabourAssignmentList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const order = walkInOrder(r.walk_in_order_id),
+            worker = labourer(r.labourer_id);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${date(r.assignment_date)}</span><h3>${esc(worker?.name || 'Labour')}</h3><div class="record-meta"><span>${esc(order ? orderLabel(order) : 'Order')}</span><span>${Number(r.days) === 0.5 ? 'Half day' : 'Full day'}</span></div></div><div class="record-side"><strong>${money(r.amount ?? Number(r.days) * Number(r.daily_rate))}</strong><button class="view-button" data-view-order-labour="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No order labour assigned', 'Assign a labour person to an order.');
+}
+function renderOrderItems() {
+  const q = $('#orderItemSearch').value.toLowerCase(),
+    rows = state.orderItems.filter((r) => [r.name, r.details].join(' ').toLowerCase().includes(q));
+  $('#orderItemList').innerHTML = rows.length
+    ? rows
+        .map(
+          (r) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">INVOICE ITEM</span><h3>${esc(r.name)}</h3><div class="record-meta"><span>${esc(r.details || 'No details')}</span></div></div><button class="view-button" data-view-order-item="${r.id}">View</button></div></article>`,
+        )
+        .join('')
+    : empty('No invoice items', 'Add items such as tables, doors or cupboards.');
+}
+function renderOrders() {
+  renderOrderInvoices();
+  renderOrderReceipts();
+  renderOrderExpenses();
+  renderOrderMaterials();
+  renderOrderLabour();
+  renderOrderItems();
+  $('#orderCustomerPhoneOptions').innerHTML = [
+    ...new Map(state.walkInOrders.filter((r) => r.customer_phone).map((r) => [r.customer_phone, r])).values(),
+  ]
+    .map((r) => `<option value="${esc(r.customer_phone)}">${esc(r.customer_name)}</option>`)
+    .join('');
+}
+function renderPurchaseSuppliers() {
+  const q = $('#supplierSearch').value.toLowerCase(),
+    rows = state.suppliers.filter((r) =>
+      [r.supplier_number, r.name, r.company_name, r.phone, r.address, r.notes]
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  $('#supplierList').innerHTML = rows.length
+    ? rows
+        .map(
+          (r) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.supplier_number || shortCode('SUP', r.id))}</span><h3>${esc(r.name)}</h3><div class="record-meta">${r.company_name ? `<span>${esc(r.company_name)}</span>` : ''}${r.phone ? `<span>${esc(r.phone)}</span>` : ''}<span>${state.purchaseBills.filter((b) => b.supplier_id === r.id).length} purchases</span></div></div><button class="view-button" data-view-supplier="${r.id}">View</button></div></article>`,
+        )
+        .join('')
+    : empty('No suppliers found', 'Add the first material supplier.');
+}
+function renderPurchaseMaterials() {
+  const q = $('#purchaseMaterialSearch').value.toLowerCase(),
+    rows = state.materials.filter((r) =>
+      [r.name, r.sku, r.unit, r.details, r.tracking_type].join(' ').toLowerCase().includes(q),
+    );
+  $('#purchaseMaterialList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const metric = materialMetrics(r),
+            pool = isConsumable(r);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.sku || shortCode('MAT', r.id))} · ${pool ? 'CONSUMABLE' : 'TRACKABLE'}</span><h3>${esc(r.name)}</h3><div class="record-meta"><span>${pool ? `${money(metric.stock)} remaining` : `${qty(metric.stock)} ${esc(r.unit)} in stock`}</span>${pool ? '' : `<span>${money(metric.unitCost)} latest cost</span>`}</div></div><button class="view-button" data-view-purchase-material="${r.id}">View</button></div></article>`;
+        })
+        .join('')
+    : empty('No materials found', 'Add material before recording a purchase.');
+}
+function renderPurchases() {
+  const q = $('#purchaseSearch').value.toLowerCase(),
+    rows = state.purchaseBills.filter((r) => {
+      const vendor = supplier(r.supplier_id),
+        names = purchaseLines(r.id).map((line) => material(line.material_id)?.name);
+      return [r.bill_number, vendor?.name, vendor?.company_name, ...names]
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    });
+  $('#purchaseList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const vendor = supplier(r.supplier_id);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.bill_number)}</span><h3>${esc(vendor?.name || 'Supplier purchase')}</h3><div class="record-meta"><span>${date(r.bill_date)}</span><span>${purchaseLines(r.id).length} materials</span><span>${esc(r.payment_status)}</span></div></div><div class="record-side"><strong>${money(r.total_amount)}</strong><button class="view-button" data-view-purchase="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No purchases found', 'Record the first material purchase.');
+}
+function renderPurchasePayments() {
+  const q = $('#purchasePaymentSearch').value.toLowerCase(),
+    rows = state.payments
+      .filter((r) => r.payment_type === 'supplier_payment')
+      .filter((r) => {
+        const vendor = supplier(r.supplier_id),
+          bill = purchaseBill(r.purchase_bill_id);
+        return [r.payment_number, r.description, vendor?.name, vendor?.company_name, bill?.bill_number]
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      });
+  $('#purchasePaymentList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const vendor = supplier(r.supplier_id),
+            bill = purchaseBill(r.purchase_bill_id);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.payment_number)}</span><h3>${esc(vendor?.name || 'Supplier payment')}</h3><div class="record-meta"><span>${esc(bill?.bill_number || 'Overall supplier account')}</span><span>${date(r.payment_date)}</span><span>${esc(account(r.from_account_id)?.name || 'Account')}</span></div></div><div class="record-side"><strong>${money(r.amount)}</strong><button class="view-button" data-view-purchase-payment="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No purchase payments', 'Record the first supplier payment.');
+}
+function renderCashPurchases() {
+  const q = $('#cashPurchaseSearch').value.toLowerCase(),
+    rows = state.purchaseBills
+      .filter((r) => supplier(r.supplier_id)?.name === 'Cash Purchase Supplier')
+      .filter((r) =>
+        [r.bill_number, ...purchaseLines(r.id).map((line) => material(line.material_id)?.name)]
+          .join(' ')
+          .toLowerCase()
+          .includes(q),
+      );
+  $('#cashPurchaseList').innerHTML = rows.length
+    ? rows
+        .map(
+          (r) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(r.bill_number)}</span><h3>Cash purchase</h3><div class="record-meta"><span>${date(r.bill_date)}</span><span>${purchaseLines(r.id).length} materials</span><span>${esc(r.payment_status)}</span></div></div><div class="record-side"><strong>${money(r.total_amount)}</strong><button class="view-button" data-view-purchase="${r.id}">View</button></div></div></article>`,
+        )
+        .join('')
+    : empty('No cash purchases', 'Record a purchase paid immediately from cash or bank.');
+}
+function renderConsumablePool() {
+  const q = $('#consumablePoolSearch').value.toLowerCase(),
+    rows = state.materials
+      .filter(isConsumable)
+      .filter((r) => [r.name, r.sku, r.details].join(' ').toLowerCase().includes(q)),
+    total = rows.reduce((sum, r) => sum + materialMetrics(r).stock, 0),
+    opening = rows.reduce((sum, r) => sum + materialMetrics(r).opening, 0),
+    purchased = rows.reduce((sum, r) => sum + materialMetrics(r).purchased, 0),
+    returned = rows.reduce((sum, r) => sum + materialMetrics(r).returned, 0),
+    used = rows.reduce((sum, r) => sum + materialMetrics(r).used, 0);
+  $('#consumablePoolSummary').innerHTML =
+    `${opening ? `<span>Opening <b>${money(opening)}</b></span>` : ''}<span>Purchased <b>${money(purchased)}</b></span><span>Allocated <b>${money(used)}</b></span><span>Returned <b>${money(returned)}</b></span><span class="grand-total">Pool remaining <b>${money(total)}</b></span>`;
+  $('#consumablePoolList').innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const m = materialMetrics(r),
+            available = m.opening + m.purchased,
+            percent = available ? Math.max(0, Math.min(100, (m.stock / available) * 100)) : 0;
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">CONSUMABLE</span><h3>${esc(r.name)}</h3><div class="record-meta">${m.opening ? `<span>Opening ${money(m.opening)}</span>` : ''}<span>Purchased ${money(m.purchased)}</span><span>Allocated ${money(m.used)}</span>${m.returned ? `<span>Returned ${money(m.returned)}</span>` : ''}</div><div class="pool-progress" aria-label="${Math.round(percent)} percent remaining"><span style="width:${percent}%"></span></div></div><div class="record-side"><strong>${money(m.stock)}</strong><button class="view-button" data-view-purchase-material="${r.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No consumables', 'Set a material tracking method to Consumable pool.');
+}
+function renderPurchasing() {
+  renderPurchaseSuppliers();
+  renderPurchaseMaterials();
+  renderPurchases();
+  renderCashPurchases();
+  renderConsumablePool();
+  renderPurchasePayments();
+}
+function renderLabourPayments() {
+  const balances = state.labourers
+    .map((worker) => {
+      const unpaid = labourUnpaidTotal(worker.id),
+        advance = labourAdvanceAvailable(worker.id);
+      return { worker, unpaid, advance, net: Math.max(0, unpaid - advance) };
+    })
+    .filter((row) => row.unpaid > 0 || row.advance > 0);
+  $('#labourBalanceList').innerHTML = balances.length
+    ? balances
+        .map(
+          (row) =>
+            `<article class="record-card"><div class="record-top"><div><span class="status ${row.unpaid > 0 ? 'wage-due' : 'advance-credit'}">${row.unpaid > 0 ? 'WAGES DUE' : 'ADVANCE CREDIT'}</span><h3>${esc(row.worker.name)}</h3><div class="record-meta"><span class="wage-due-text">Wages due ${money(row.unpaid)}</span><span class="advance-credit-text">Advance balance ${money(row.advance)}</span><span>Net payable ${money(row.net)}</span></div></div>${row.unpaid > 0 ? `<button class="view-button" data-pay-worker="${row.worker.id}">Pay wages</button>` : ''}</div></article>`,
+        )
+        .join('')
+    : empty('No labour balances', 'Assignments and advances will appear here.');
+  const history = [
+    ...state.labourWageSettlements.map((row) => ({
+      kind: 'wage',
+      id: row.id,
+      labourer_id: row.labourer_id,
+      date: row.settlement_date,
+      amount: row.gross_wages,
+      created_at: row.created_at,
+    })),
+    ...state.payments
+      .filter((row) => row.payment_type === 'labour_advance')
+      .map((row) => ({
+        kind: 'advance',
+        id: row.id,
+        labourer_id: row.labourer_id,
+        date: row.payment_date,
+        amount: row.amount,
+        created_at: row.created_at,
+      })),
+  ].sort((a, b) => `${b.date}${b.created_at}`.localeCompare(`${a.date}${a.created_at}`));
+  $('#labourPaymentHistory').innerHTML = history.length
+    ? history
+        .map(
+          (row) =>
+            `<article class="record-card"><div class="record-top"><div><span class="status ${row.kind === 'wage' ? 'wage-due' : 'advance-credit'}">${row.kind === 'wage' ? 'WAGE SETTLEMENT' : 'ADVANCE PAYMENT'}</span><h3>${esc(labourer(row.labourer_id)?.name || 'Labour')}</h3><div class="record-meta"><span>${date(row.date)}</span><span>${row.kind === 'wage' ? 'Wages settled' : 'Advance recorded'}</span></div></div><div class="record-side"><strong>${money(row.amount)}</strong><button class="view-button" data-view-labour-${row.kind}="${row.id}">View</button></div></div></article>`,
+        )
+        .join('')
+    : empty('No labour payments', 'Wage settlements and advances will appear here.');
+}
+function transferCard(row) {
+  const from = account(row.from_account_id),
+    to = account(row.to_account_id);
+  return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(row.payment_number || shortCode('TRF', row.id))}</span><h3>${esc(from?.name || 'Account')} → ${esc(to?.name || 'Account')}</h3><div class="record-meta"><span>${date(row.payment_date)}</span><span>${esc(row.description || 'Money transfer')}</span></div></div><div class="record-side"><strong>${money(row.amount)}</strong><button class="view-button" data-view-bank-transfer-entry="${row.id}">View</button></div></div></article>`;
+}
+function renderBanking() {
+  const banks = bankAccounts(),
+    cash = cashAccounts(),
+    transfers = transferRows(),
+    q = $('#bankAccountSearch').value.toLowerCase(),
+    visible = [...cash, ...banks].filter((row) =>
+      [row.name, row.bank_name, row.account_number, row.account_type].join(' ').toLowerCase().includes(q),
+    );
+  $('#bankAccountList').innerHTML = visible.length
+    ? visible
+        .map(
+          (row) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(row.account_type === 'Cash' ? 'CASH ACCOUNT' : row.bank_name || 'BANK ACCOUNT')}</span><h3>${esc(row.name)}</h3><div class="record-meta">${row.account_type === 'Cash' ? '<span>Default cash ledger</span>' : `<span>${row.account_number ? `•••• ${esc(String(row.account_number).slice(-4))}` : 'No account number'}</span>`}<span>${accountHasActivity(row.id) ? 'Active ledger' : 'No transactions'}</span></div></div><div class="record-side"><strong>${money(accountBalance(row.id))}</strong><button class="view-button" data-view-bank-account="${row.id}">View</button></div></div></article>`,
+        )
+        .join('')
+    : empty('No accounts found', 'Cash is created automatically. Add a bank account when needed.');
+  const withdrawals = transfers.filter(
+      (row) =>
+        account(row.from_account_id)?.account_type === 'Bank' &&
+        account(row.to_account_id)?.account_type === 'Cash',
+    ),
+    deposits = transfers.filter(
+      (row) =>
+        account(row.from_account_id)?.account_type === 'Cash' &&
+        account(row.to_account_id)?.account_type === 'Bank',
+    ),
+    bankMoves = transfers.filter(
+      (row) =>
+        account(row.from_account_id)?.account_type === 'Bank' &&
+        account(row.to_account_id)?.account_type === 'Bank',
+    );
+  $('#cashWithdrawalList').innerHTML = withdrawals.length
+    ? withdrawals.map(transferCard).join('')
+    : empty('No cash withdrawals', 'Move money from a bank account to cash.');
+  $('#cashDepositList').innerHTML = deposits.length
+    ? deposits.map(transferCard).join('')
+    : empty('No cash deposits', 'Move cash into a bank account.');
+  $('#bankTransferList').innerHTML = bankMoves.length
+    ? bankMoves.map(transferCard).join('')
+    : empty('No bank transfers', 'Move money between two bank accounts.');
+  const charges = state.payments.filter((row) => row.payment_type === 'expense');
+  $('#bankingExpenseChargeList').innerHTML = charges.length
+    ? charges
+        .map((row) => {
+          const cat = expenseCategory(row.expense_category_id || row.reference);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(row.payment_number || shortCode('EXP', row.id))}</span><h3>${esc(cat?.name || row.description)}</h3><div class="record-meta"><span>${date(row.payment_date)}</span><span>${esc(account(row.from_account_id)?.name || 'Account')}</span><span>${esc(row.notes || 'Business overhead')}</span></div></div><div class="record-side"><strong>${money(row.amount)}</strong><button class="view-button" data-view-banking-expense="${row.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No business expenses', 'Charge rent, salaries or other monthly overheads.');
+  $('#bankingExpenseCategoryList').innerHTML = state.expenseCategories.length
+    ? state.expenseCategories
+        .map(
+          (row) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">EXPENSE TYPE</span><h3>${esc(row.name)}</h3><div class="record-meta"><span>${esc(row.description || 'No details')}</span></div></div><button class="view-button" data-view-expense-category="${row.id}">View</button></div></article>`,
+        )
+        .join('')
+    : empty('No expense types', 'Add rent, salaries, equipment rental or another overhead.');
+}
+function render() {
+  applyBusinessLabels();
+  renderParties();
+  renderProjects();
+  renderQuotes();
+  renderInvoices();
+  renderReceipts();
+  renderLabour();
+  renderMaterials();
+  renderExpenses();
+  renderOrders();
+  renderPurchasing();
+  renderLabourPayments();
+  renderBanking();
+  window.renderMobileReports?.();
+  $('#quoteProjectOptions').innerHTML = state.projects
+    .filter((r) => r.closed !== true)
+    .map((r) => `<option value="${esc(projectLabel(r))}"></option>`)
+    .join('');
+}
+
+const approvedProjects = () => state.projects.filter((r) => projectFinanciallyActive(r) && r.closed !== true);
+const projectReturnable = (projectId, materialId) => {
+  const item = material(materialId);
+  return Math.max(
+    0,
+    state.materialMovements
+      .filter((row) => row.project_id === projectId && row.material_id === materialId)
+      .reduce(
+        (total, row) =>
+          total +
+          (row.movement_type === 'project_issue'
+            ? isConsumable(item)
+              ? movementValue(row)
+              : Number(row.quantity || 0)
+            : row.movement_type === 'project_return'
+              ? -(isConsumable(item) ? movementValue(row) : Number(row.quantity || 0))
+              : 0),
+        0,
+      ),
+  );
+};
+function openParty(id = '') {
+  const r = party(id),
+    next = id || uid();
+  $('#partyForm').reset();
+  $('#partyId').value = next;
+  $('#partyCode').value = r?.party_number || nextSerial('PTY', state.parties, 'party_number');
+  $('#partyName').value = r?.name || '';
+  $('#partyPhone').value = r?.phone || '';
+  $('#partyAddress').value = r?.address || '';
+  $('#partySheetTitle').textContent = r ? 'Edit party' : 'Add party';
+  openSheet('#partySheet');
+}
+function updateProjectOpening() {
+  const fields = [
+      'projectOpeningInvoice',
+      'projectOpeningReceived',
+      'projectOpeningExpenses',
+      'projectOpeningMaterial',
+      'projectOpeningLabour',
+    ],
+    hasValue = fields.some((id) => $('#' + id).value !== ''),
+    invoice = Number($('#projectOpeningInvoice').value || 0),
+    received = Number($('#projectOpeningReceived').value || 0),
+    expenses = Number($('#projectOpeningExpenses').value || 0),
+    materials = Number($('#projectOpeningMaterial').value || 0),
+    labour = Number($('#projectOpeningLabour').value || 0);
+  $('#projectOpeningReceivable').value = hasValue ? (invoice - received).toFixed(2) : '';
+  $('#projectOpeningProfit').value = hasValue ? (invoice - expenses - materials - labour).toFixed(2) : '';
+}
+function openProject(id = '') {
+  if (!state.parties.length) {
+    toast('Add a party before creating a project.');
+    route('parties');
+    return;
+  }
+  const r = project(id),
+    next = id || uid(),
+    hasOpening =
+      r &&
+      [
+        r.opening_invoice_amount,
+        r.opening_received_amount,
+        r.opening_expenses_amount,
+        r.opening_material_amount,
+        r.opening_labour_amount,
+      ].some(Number);
+  $('#projectForm').reset();
+  $('#projectId').value = next;
+  $('#projectCode').value = r?.project_number || nextSerial('PRJ', state.projects, 'project_number');
+  $('#projectName').value = r?.name || '';
+  $('#projectParty').innerHTML = options(state.parties, (row) => row.name, 'Select party');
+  $('#projectParty').value = r?.party_id || '';
+  $('#projectLocation').value = r?.location || '';
+  $('#projectOpeningInvoice').value = numberInputValue(r?.opening_invoice_amount);
+  $('#projectOpeningReceived').value = numberInputValue(r?.opening_received_amount);
+  $('#projectOpeningExpenses').value = numberInputValue(r?.opening_expenses_amount);
+  $('#projectOpeningMaterial').value = numberInputValue(r?.opening_material_amount);
+  $('#projectOpeningLabour').value = numberInputValue(r?.opening_labour_amount);
+  $('#projectOpeningWrap').classList.toggle('hidden', !hasOpening);
+  $('[data-toggle-details="projectOpeningWrap"]').setAttribute('aria-expanded', String(Boolean(hasOpening)));
+  updateProjectOpening();
+  $('#projectClosed').checked = r?.closed === true;
+  $('#projectSheetTitle').textContent = r ? 'Edit project' : 'Add project';
+  openSheet('#projectSheet');
+}
+const resolveParty = (name) => state.parties.find((r) => r.name.toLowerCase() === name.trim().toLowerCase());
+const resolveProject = (label) =>
+  state.projects.find((r) => projectLabel(r).toLowerCase() === label.trim().toLowerCase());
+function setQuoteDays() {
+  $('#quoteDays').value = daysBetween($('#quoteStart').value, $('#quoteEnd').value);
+}
+function openQuote(id = '') {
+  if (!state.projects.length) {
+    toast('Add a project before creating a quote.');
+    route('projectMaster');
+    return;
+  }
+  const r = project(id);
+  $('#quoteForm').reset();
+  $('#quoteProjectId').value = id;
+  $('#quoteProjectSearch').value = r ? projectLabel(r) : '';
+  $('#quoteProjectSearch').readOnly = Boolean(r);
+  $('#quoteDate').value = r?.quote_date || today();
+  $('#quoteStart').value = r?.start_date || '';
+  $('#quoteEnd').value = r?.expected_end_date || '';
+  $('#quoteDays').value = r?.days_to_complete ?? '';
+  $('#quoteDetails').value = r?.description || '';
+  $('#quoteWithMaterial').value = r?.price_with_material ?? '';
+  $('#quoteWithoutMaterial').value = r?.price_without_material ?? '';
+  $('#quoteShowBoth').checked = r?.pricing_mode === 'both';
+  $('#quotePaymentTerms').value = r?.payment_terms || state.business?.default_payment_terms || '';
+  $('#quoteNotes').value = r?.notes || '';
+  $('#quoteSheetTitle').textContent = r?.quote_created ? 'Edit quote' : 'Add quote';
+  openSheet('#quoteSheet');
+}
+function updateReceiptDue() {
+  const job = project($('#receiptProject').value),
+    balance = job ? projectBalance(job) : 0;
+  $('#receiptDue').textContent = job
+    ? `${balance >= 0 ? 'Outstanding balance' : 'Customer credit'}: ${money(Math.abs(balance))}`
+    : '';
+}
+function openReceipt(id = '') {
+  if (!approvedProjects().length) {
+    toast('Approve an active project quote before receiving payment.');
+    route('quotes');
+    return;
+  }
+  if (!state.paymentAccounts.length) {
+    toast('Add a bank or cash account in Banking first.');
+    tab('banking');
+    return;
+  }
+  const r = state.payments.find((x) => x.id === id);
+  $('#receiptForm').reset();
+  $('#receiptId').value = r?.id || '';
+  $('#receiptProject').innerHTML = options(approvedProjects(), projectLabel, 'Select project - party');
+  $('#receiptProject').value = r?.project_id || '';
+  $('#receiptProject').disabled = Boolean(r);
+  $('#receiptDate').value = r?.payment_date || today();
+  $('#receiptAccount').innerHTML = options(
+    state.paymentAccounts,
+    (x) => `${x.name}${x.bank_name ? ` - ${x.bank_name}` : ''}`,
+    'Select bank / cash account',
+  );
+  $('#receiptAccount').value = r?.to_account_id || '';
+  $('#receiptAmount').value = r?.amount ?? '';
+  $('#receiptDetails').value = r?.description || '';
+  $('#receiptSheetTitle').textContent = r ? 'Edit received payment' : 'Payment received';
+  updateReceiptDue();
+  openSheet('#receiptSheet');
+}
+function openLabourPerson(id = '') {
+  const r = labourer(id);
+  $('#labourPersonForm').reset();
+  $('#labourPersonId').value = r?.id || '';
+  $('#labourRecordDate').value = r?.record_date || String(r?.created_at || today()).slice(0, 10);
+  $('#labourName').value = r?.name || '';
+  $('#labourMobile').value = r?.mobile || '';
+  $('#labourCnic').value = r?.cnic || '';
+  $('#labourJoiningDate').value = r?.joining_date || '';
+  $('#labourDailyWage').value = r?.daily_wage_rate ?? '';
+  $('#labourSpeciality').value = r?.speciality || '';
+  $('#labourPersonSheetTitle').textContent = r ? 'Edit labour person' : 'Add labour person';
+  openSheet('#labourPersonSheet');
+}
+function updateLabourCost() {
+  const worker = labourer($('#labourAssignmentPerson').value),
+    rate = Number(worker?.daily_wage_rate || 0),
+    days = Number($('#labourDayType').value || 1);
+  $('#labourAssignmentRate').value = worker ? numberInputValue(rate) : '';
+  $('#labourActualCost').value = worker ? (rate * days).toFixed(2) : '';
+}
+function openLabourAssignment() {
+  if (!approvedProjects().length) {
+    toast('Approve a project quote before assigning labour.');
+    return;
+  }
+  if (!state.labourers.length) {
+    toast('Add a labour person first.');
+    showLabourTab('persons');
+    return;
+  }
+  $('#labourAssignmentForm').reset();
+  $('#labourAssignmentDate').value = today();
+  $('#labourAssignmentProject').innerHTML = options(
+    approvedProjects(),
+    projectLabel,
+    'Select project - party',
+  );
+  $('#labourAssignmentPerson').innerHTML = options(
+    state.labourers.filter((r) => r.active !== false),
+    (r) => `${r.name} - ${money(r.daily_wage_rate)}`,
+    'Select labour person',
+  );
+  $('#labourDayType').value = '1';
+  updateLabourCost();
+  openSheet('#labourAssignmentSheet');
+}
+function updateMaterialCost() {
+  const item = material($('#materialAssignmentMaterial').value),
+    projectId = $('#materialAssignmentProject').value,
+    mode = $('#materialAssignmentMode').value,
+    metric = item ? materialMetrics(item) : { stock: 0, unitCost: 0 },
+    amountText = $('#materialAssignmentQuantity').value,
+    amount = Number(amountText || 0),
+    available = mode === 'return' && item ? projectReturnable(projectId, item.id) : metric.stock,
+    pool = isConsumable(item),
+    quantityLabel = $('#materialAssignmentQuantity').closest('label');
+  quantityLabel.firstChild.nodeValue = pool ? 'Consumable amount *' : 'Quantity *';
+  $('#materialAssignmentRate').closest('label').classList.toggle('hidden', pool);
+  $('#materialAssignmentTotal').closest('label').classList.toggle('hidden', pool);
+  $('#materialAssignmentRate').value = item ? numberInputValue(metric.unitCost) : '';
+  $('#materialAssignmentTotal').value =
+    item && amountText !== '' ? numberInputValue(metric.unitCost * amount) : '';
+  $('#materialStockHelp').textContent = item
+    ? `${mode === 'return' ? 'Returnable from this project' : 'Available'}: ${pool ? money(available) : `${qty(available)} ${item.unit}`}${pool ? '. Enter the rupee amount to allocate or return.' : '. Cost is from the latest purchase.'}`
+    : '';
+}
+function openMaterialAssignment(mode = 'assign') {
+  if (!approvedProjects().length) {
+    toast('Approve an active project quote before assigning material.');
+    return;
+  }
+  if (!state.materials.length) {
+    toast('Add materials and purchases in Purchasing first.');
+    tab('purchasing');
+    return;
+  }
+  $('#materialAssignmentForm').reset();
+  $('#materialAssignmentMode').value = mode;
+  $('#materialAssignmentDate').value = today();
+  $('#materialAssignmentProject').innerHTML = options(
+    approvedProjects(),
+    projectLabel,
+    'Select project - party',
+  );
+  $('#materialAssignmentMaterial').innerHTML = options(
+    state.materials,
+    (r) =>
+      `${r.name} - ${isConsumable(r) ? money(materialMetrics(r).stock) : `${qty(materialMetrics(r).stock)} ${r.unit}`} available`,
+    'Select purchased material',
+  );
+  $('#materialAssignmentSheetTitle').textContent = mode === 'return' ? 'Return material' : 'Assign material';
+  updateMaterialCost();
+  openSheet('#materialAssignmentSheet');
+}
+function openExpenseCategory(id = '') {
+  const r = expenseCategory(id);
+  $('#expenseCategoryForm').reset();
+  $('#expenseCategoryId').value = r?.id || '';
+  $('#expenseCategoryName').value = r?.name || '';
+  $('#expenseCategoryDetails').value = r?.description || '';
+  $('#expenseCategorySheetTitle').textContent = r ? 'Edit expense' : 'Add expense';
+  openSheet('#expenseCategorySheet');
+}
+function openExpenseCharge() {
+  if (!approvedProjects().length) {
+    toast('Approve a project quote before charging expenses.');
+    return;
+  }
+  if (!state.expenseCategories.length) {
+    toast('Add an expense type first.');
+    showExpenseTab('list');
+    return;
+  }
+  $('#expenseChargeForm').reset();
+  $('#expenseChargeDate').value = today();
+  $('#expenseChargeProject').innerHTML = options(approvedProjects(), projectLabel, 'Select project - party');
+  $('#expenseChargeCategory').innerHTML = options(state.expenseCategories, (r) => r.name, 'Select expense');
+  openSheet('#expenseChargeSheet');
+}
+function openScope() {
+  const rows = approvedProjects().filter((r) => state.invoices.some((i) => i.project_id === r.id));
+  if (!rows.length) {
+    toast('No approved project invoice is available.');
+    return;
+  }
+  $('#scopeForm').reset();
+  $('#scopeProject').innerHTML = rows
+    .map((r) => `<option value="${r.id}">${esc(projectLabel(r))}</option>`)
+    .join('');
+  $('#scopeDate').value = today();
+  openSheet('#scopeSheet');
+}
+function invoiceItemOptions(selected = '') {
+  return options(state.orderItems, (r) => r.name, 'Select item').replace(
+    `value="${selected}"`,
+    `value="${selected}" selected`,
+  );
+}
+function addOrderInvoiceLine(data = {}) {
+  const line = document.createElement('div'),
+    quantity = numberInputValue(data.quantity),
+    rate = numberInputValue(data.rate);
+  line.className = 'invoice-line';
+  line.innerHTML = `<div class="invoice-line-head"><b>Invoice item</b><button class="remove-line" type="button" data-remove-order-line>×</button></div><div class="invoice-line-grid"><label class="wide">Item *<select data-order-line-item required>${invoiceItemOptions(data.order_item_id || '')}</select></label><label class="wide">Details<textarea data-order-line-details rows="2">${esc(data.details || '')}</textarea></label><label>Qty *<input data-order-line-qty type="number" min="0.001" step="0.001" value="${quantity}" required></label><label>Rate *<input data-order-line-rate type="number" min="0" step="0.01" value="${rate}" required></label><label class="wide">Amount<input data-order-line-amount value="${quantity && rate ? money(Number(quantity) * Number(rate)) : ''}" readonly></label></div>`;
+  $('#orderInvoiceLines').append(line);
+  recalcOrderInvoice();
+}
+function readOrderInvoiceLines() {
+  return $$('.invoice-line', $('#orderInvoiceLines')).map((line) => ({
+    order_item_id: $('[data-order-line-item]', line).value,
+    details: $('[data-order-line-details]', line).value.trim() || null,
+    quantity: Number($('[data-order-line-qty]', line).value),
+    rate: Number($('[data-order-line-rate]', line).value),
+  }));
+}
+function recalcOrderInvoice() {
+  const subtotal = readOrderInvoiceLines().reduce(
+      (sum, line) => sum + (line.quantity || 0) * (line.rate || 0),
+      0,
+    ),
+    discount = Number($('#orderInvoiceDiscount').value || 0),
+    total = Math.max(0, subtotal - discount);
+  $('#orderInvoiceSubtotal').textContent = money(subtotal);
+  $('#orderInvoiceGrandTotal').textContent = money(total);
+  $$('.invoice-line', $('#orderInvoiceLines')).forEach((line) => {
+    $('[data-order-line-amount]', line).value = money(
+      Number($('[data-order-line-qty]', line).value || 0) *
+        Number($('[data-order-line-rate]', line).value || 0),
+    );
+  });
+}
+function openOrderInvoice(id = '') {
+  if (!state.orderItems.length) {
+    toast('Add an invoice item first.');
+    route('orderItems');
+    return;
+  }
+  const order = walkInOrder(id);
+  $('#orderInvoiceForm').reset();
+  $('#orderInvoiceOrderId').value = order?.id || '';
+  $('#orderInvoiceDate').value = orderInvoice(order || {})?.invoice_date || order?.order_date || today();
+  $('#orderInvoiceMobile').value = order?.customer_phone || '';
+  $('#orderInvoiceCustomer').value = order?.customer_name || '';
+  $('#orderInvoiceDiscount').value = numberInputValue(order?.discount);
+  $('#orderInvoiceLines').innerHTML = '';
+  const lines = order ? orderLines(order.id) : [];
+  (lines.length ? lines : [{}]).forEach(addOrderInvoiceLine);
+  $('#orderInvoiceSheetTitle').textContent = order ? 'Edit invoice' : 'Add invoice';
+  recalcOrderInvoice();
+  openSheet('#orderInvoiceSheet');
+}
+function autofillOrderCustomer() {
+  const phone = $('#orderInvoiceMobile').value.trim(),
+    old = [...state.walkInOrders].reverse().find((r) => r.customer_phone === phone);
+  if (old) $('#orderInvoiceCustomer').value = old.customer_name;
+}
+function updateOrderReceiptDue() {
+  const order = walkInOrder($('#orderReceiptOrder').value),
+    balance = order ? orderDue(order) : 0;
+  $('#orderReceiptDue').textContent = order
+    ? `${balance >= 0 ? 'Outstanding balance' : 'Customer credit'}: ${money(Math.abs(balance))}`
+    : '';
+}
+function openOrderReceipt(id = '') {
+  if (!state.walkInOrders.length) {
+    toast('Add an order invoice first.');
+    route('orderInvoices');
+    return;
+  }
+  if (!state.paymentAccounts.length) {
+    toast('Add a bank or cash account in Banking first.');
+    tab('banking');
+    return;
+  }
+  const receipt = state.payments.find((r) => r.id === id);
+  $('#orderReceiptForm').reset();
+  $('#orderReceiptId').value = receipt?.id || '';
+  $('#orderReceiptOrder').innerHTML = options(
+    state.walkInOrders.filter((r) => r.status !== 'Cancelled'),
+    orderLabel,
+    'Select order - customer',
+  );
+  $('#orderReceiptOrder').value = receipt?.walk_in_order_id || '';
+  $('#orderReceiptOrder').disabled = Boolean(receipt);
+  $('#orderReceiptDate').value = receipt?.payment_date || today();
+  $('#orderReceiptAccount').innerHTML = options(
+    state.paymentAccounts,
+    (r) => `${r.name}${r.bank_name ? ` - ${r.bank_name}` : ''}`,
+    'Select bank / cash account',
+  );
+  $('#orderReceiptAccount').value = receipt?.to_account_id || '';
+  $('#orderReceiptAmount').value = receipt?.amount ?? '';
+  $('#orderReceiptDetails').value = receipt?.description || '';
+  $('#orderReceiptSheetTitle').textContent = receipt ? 'Edit received payment' : 'Receive payment';
+  updateOrderReceiptDue();
+  openSheet('#orderReceiptSheet');
+}
+function openOrderExpense() {
+  if (!state.walkInOrders.length) {
+    toast('Add an order invoice first.');
+    return;
+  }
+  if (!state.expenseCategories.length) {
+    toast('Add an expense type first.');
+    showOrderExpenseTab('list');
+    return;
+  }
+  $('#orderExpenseChargeForm').reset();
+  $('#orderExpenseDate').value = today();
+  $('#orderExpenseOrder').innerHTML = options(
+    state.walkInOrders.filter((r) => r.status !== 'Cancelled'),
+    orderLabel,
+    'Select order - customer',
+  );
+  $('#orderExpenseCategory').innerHTML = options(state.expenseCategories, (r) => r.name, 'Select expense');
+  openSheet('#orderExpenseChargeSheet');
+}
+function orderReturnable(orderId, materialId) {
+  const item = material(materialId);
+  return state.materialMovements
+    .filter((r) => r.walk_in_order_id === orderId && r.material_id === materialId)
+    .reduce(
+      (sum, r) =>
+        sum +
+        (r.movement_type === 'walk_in_issue'
+          ? isConsumable(item)
+            ? movementValue(r)
+            : Number(r.quantity || 0)
+          : r.movement_type === 'walk_in_return'
+            ? -(isConsumable(item) ? movementValue(r) : Number(r.quantity || 0))
+            : 0),
+      0,
+    );
+}
+function updateOrderMaterialCost() {
+  const item = material($('#orderMaterialItem').value),
+    mode = $('#orderMaterialMode').value,
+    orderId = $('#orderMaterialOrder').value,
+    metric = item ? materialMetrics(item) : { stock: 0, unitCost: 0 },
+    quantityText = $('#orderMaterialQuantity').value,
+    quantity = Number(quantityText || 0),
+    available = mode === 'return' && item ? orderReturnable(orderId, item.id) : metric.stock,
+    pool = isConsumable(item),
+    quantityLabel = $('#orderMaterialQuantity').closest('label');
+  quantityLabel.firstChild.nodeValue = pool ? 'Consumable amount *' : 'Quantity *';
+  $('#orderMaterialRate').closest('label').classList.toggle('hidden', pool);
+  $('#orderMaterialTotal').closest('label').classList.toggle('hidden', pool);
+  $('#orderMaterialRate').value = item ? numberInputValue(metric.unitCost) : '';
+  $('#orderMaterialTotal').value =
+    item && quantityText !== '' ? numberInputValue(metric.unitCost * quantity) : '';
+  $('#orderMaterialHelp').textContent = item
+    ? `${mode === 'return' ? 'Returnable from this order' : 'Available'}: ${pool ? money(available) : `${qty(available)} ${item.unit}`}`
+    : '';
+}
+function openOrderMaterial(mode = 'assign') {
+  if (!state.walkInOrders.length) {
+    toast('Add an order invoice first.');
+    return;
+  }
+  if (!state.materials.length) {
+    toast('Add materials and purchases in Purchasing first.');
+    tab('purchasing');
+    return;
+  }
+  $('#orderMaterialForm').reset();
+  $('#orderMaterialMode').value = mode;
+  $('#orderMaterialDate').value = today();
+  $('#orderMaterialOrder').innerHTML = options(
+    state.walkInOrders.filter((r) => ['Pending', 'In Progress', 'Ready'].includes(r.status)),
+    orderLabel,
+    'Select order - customer',
+  );
+  $('#orderMaterialItem').innerHTML = options(state.materials, (r) => r.name, 'Select material');
+  $('#orderMaterialSheetTitle').textContent = mode === 'return' ? 'Return material' : 'Assign material';
+  updateOrderMaterialCost();
+  openSheet('#orderMaterialSheet');
+}
+function updateOrderLabourCost() {
+  const worker = labourer($('#orderLabourPerson').value),
+    rate = Number(worker?.daily_wage_rate || 0),
+    days = Number($('#orderLabourDay').value || 1);
+  $('#orderLabourRate').value = worker ? numberInputValue(rate) : '';
+  $('#orderLabourTotal').value = worker ? (rate * days).toFixed(2) : '';
+}
+function openOrderLabour() {
+  if (!state.walkInOrders.length) {
+    toast('Add an order invoice first.');
+    return;
+  }
+  if (!state.labourers.length) {
+    toast('Add a labour person first.');
+    showOrderLabourTab('persons');
+    return;
+  }
+  $('#orderLabourForm').reset();
+  $('#orderLabourDate').value = today();
+  $('#orderLabourOrder').innerHTML = options(
+    state.walkInOrders.filter((r) => r.status !== 'Cancelled'),
+    orderLabel,
+    'Select order - customer',
+  );
+  $('#orderLabourPerson').innerHTML = options(
+    state.labourers.filter((r) => r.active !== false),
+    (r) => `${r.name} - ${money(r.daily_wage_rate)}`,
+    'Select labour person',
+  );
+  $('#orderLabourDay').value = '1';
+  updateOrderLabourCost();
+  openSheet('#orderLabourSheet');
+}
+function openOrderItem(id = '') {
+  const item = state.orderItems.find((r) => r.id === id);
+  $('#orderItemForm').reset();
+  $('#orderItemId').value = item?.id || '';
+  $('#orderItemName').value = item?.name || '';
+  $('#orderItemDetails').value = item?.details || '';
+  $('#orderItemSheetTitle').textContent = item ? 'Edit item' : 'Add item';
+  openSheet('#orderItemSheet');
+}
+function showOrderExpenseTab(name) {
+  $$('[data-order-expense-tab]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.orderExpenseTab === name),
+  );
+  $('#orderExpenseListPanel').classList.toggle('active', name === 'list');
+  $('#orderExpenseChargesPanel').classList.toggle('active', name === 'charges');
+}
+function showOrderLabourTab(name) {
+  $$('[data-order-labour-tab]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.orderLabourTab === name),
+  );
+  $('#orderLabourPersonsPanel').classList.toggle('active', name === 'persons');
+  $('#orderLabourAssignmentsPanel').classList.toggle('active', name === 'assignments');
+}
+function openSupplier(id = '') {
+  const r = supplier(id),
+    hasPayments =
+      r && state.payments.some((row) => row.payment_type === 'supplier_payment' && row.supplier_id === r.id);
+  $('#supplierForm').reset();
+  $('#supplierId').value = r?.id || '';
+  $('#supplierName').value = r?.name || '';
+  $('#supplierOpeningAmount').value = numberInputValue(r?.opening_amount);
+  $('#supplierOpeningAmount').disabled = Boolean(hasPayments);
+  $('#supplierOpeningHelp').textContent = hasPayments
+    ? 'Opening amount is locked because supplier payments have been recorded.'
+    : 'Amount payable before the first purchase recorded in this app.';
+  $('#supplierMobile').value = r?.phone || '';
+  $('#supplierCompany').value = r?.company_name || r?.contact_name || '';
+  $('#supplierAddress').value = r?.address || '';
+  $('#supplierDetails').value = r?.notes || '';
+  $('#supplierSheetTitle').textContent = r ? 'Edit supplier' : 'Add supplier';
+  openSheet('#supplierSheet');
+}
+function syncMaterialTracking() {
+  const pool = $('#purchaseMaterialTracking').value === 'consumable';
+  $('#purchaseMaterialUnitLabel').classList.toggle('hidden', pool);
+  $('#purchaseMaterialUnit').required = !pool;
+  $('#purchaseMaterialOpeningQtyLabel').classList.toggle('hidden', pool);
+  $('#purchaseMaterialOpeningAmountLabel').classList.toggle('hidden', !pool);
+}
+function openPurchaseMaterial(id = '') {
+  const r = material(id),
+    next = id || uid();
+  $('#purchaseMaterialForm').reset();
+  $('#purchaseMaterialId').value = next;
+  $('#purchaseMaterialCode').value = r?.sku || nextSerial('MAT', state.materials, 'sku');
+  $('#purchaseMaterialName').value = r?.name || '';
+  $('#purchaseMaterialTracking').value = r?.tracking_type || 'stock';
+  $('#purchaseMaterialUnit').value = r?.unit || 'piece';
+  $('#purchaseMaterialOpeningQty').value = numberInputValue(r?.opening_quantity);
+  $('#purchaseMaterialOpeningAmount').value = numberInputValue(r?.opening_amount);
+  $('#purchaseMaterialDetails').value = r?.details || '';
+  $('#purchaseMaterialSheetTitle').textContent = r ? 'Edit material' : 'Add material';
+  syncMaterialTracking();
+  openSheet('#purchaseMaterialSheet');
+}
+function purchaseMaterialOptions(selected = '') {
+  return options(
+    state.materials,
+    (r) => `${r.name} · ${isConsumable(r) ? 'Consumable pool' : r.unit}`,
+    'Select material',
+  ).replace(`value="${selected}"`, `value="${selected}" selected`);
+}
+function syncPurchaseLine(line) {
+  const item = material($('[data-purchase-line-material]', line).value),
+    pool = isConsumable(item),
+    qtyInput = $('[data-purchase-line-qty]', line),
+    rate = $('[data-purchase-line-rate]', line);
+  line.classList.toggle('consumable-line', pool);
+  $('[data-purchase-line-rate-label]', line).firstChild.nodeValue = pool ? 'Total amount *' : 'Rate *';
+  if (pool) {
+    qtyInput.value = 1;
+    rate.placeholder = 'Enter pool amount';
+  } else rate.placeholder = '';
+  recalcPurchase();
+}
+function addPurchaseLine(data = {}) {
+  const line = document.createElement('div'),
+    item = material(data.material_id),
+    quantity = numberInputValue(data.quantity),
+    rate = numberInputValue(data.unit_cost);
+  line.className = 'invoice-line purchase-line';
+  line.innerHTML = `<div class="invoice-line-head"><b>Purchase material</b><button class="remove-line" type="button" data-remove-purchase-line>×</button></div><div class="invoice-line-grid"><label class="wide">Material *<select data-purchase-line-material required>${purchaseMaterialOptions(data.material_id || '')}</select></label><label data-purchase-line-qty-wrap>Quantity *<input data-purchase-line-qty type="number" min="0.001" step="0.001" value="${quantity}" required></label><label data-purchase-line-rate-wrap data-purchase-line-rate-label>Rate *<input data-purchase-line-rate type="number" min="0.01" step="0.01" value="${rate}" required></label><button class="collapsed-details line-details-toggle" type="button" data-toggle-line-details aria-expanded="${data.details ? 'true' : 'false'}">✎ Details</button><label class="wide collapsible-field ${data.details ? '' : 'hidden'}" data-purchase-line-details-wrap>Item details<textarea data-purchase-line-details rows="2" placeholder="e.g. 1.5 inch, brand or bill note">${esc(data.details || '')}</textarea></label><label class="wide">Line amount<input data-purchase-line-amount value="${quantity && rate ? money(lineAmount(quantity, rate)) : ''}" readonly></label></div>`;
+  $('#purchaseLines').append(line);
+  if (item) syncPurchaseLine(line);
+  recalcPurchase();
+  window.MughalControls?.refresh();
+}
+function readPurchaseLines() {
+  return $$('.purchase-line', $('#purchaseLines')).map((line) => ({
+    material_id: $('[data-purchase-line-material]', line).value,
+    quantity: Number($('[data-purchase-line-qty]', line).value),
+    unit_cost: Number($('[data-purchase-line-rate]', line).value),
+    details: $('[data-purchase-line-details]', line).value.trim() || null,
+  }));
+}
+function recalcPurchase() {
+  const subtotal = readPurchaseLines().reduce(
+      (sum, line) => sum + lineAmount(line.quantity, line.unit_cost),
+      0,
+    ),
+    discount = Number($('#purchaseDiscount').value || 0);
+  $('#purchaseSubtotal').textContent = money(subtotal);
+  $('#purchaseGrandTotal').textContent = money(Math.max(0, subtotal - discount));
+  $$('.purchase-line', $('#purchaseLines')).forEach((line) => {
+    $('[data-purchase-line-amount]', line).value = money(
+      lineAmount($('[data-purchase-line-qty]', line).value, $('[data-purchase-line-rate]', line).value),
+    );
+  });
+}
+function openPurchase(mode = 'credit') {
+  if (!state.materials.length) {
+    toast('Add a material first.');
+    route('purchaseMaterials');
+    return;
+  }
+  if (mode === 'credit' && !state.suppliers.length) {
+    toast('Add a supplier first.');
+    route('purchaseSuppliers');
+    return;
+  }
+  if (mode === 'cash' && !state.paymentAccounts.length) {
+    toast('Add a cash or bank account first.');
+    tab('banking');
+    return;
+  }
+  const cash = mode === 'cash',
+    cashSupplier = state.suppliers.find((r) => r.name === 'Cash Purchase Supplier');
+  $('#purchaseForm').reset();
+  $('#purchaseMode').value = mode;
+  $('#purchaseSupplier').innerHTML = options(
+    cash ? (cashSupplier ? [cashSupplier] : []) : state.suppliers,
+    (r) => `${r.name}${r.company_name ? ` - ${r.company_name}` : ''}`,
+    'Select supplier',
+  );
+  $('#purchaseSupplier').value = cashSupplier?.id || '';
+  $('#purchaseSupplierLabel').classList.toggle('hidden', cash);
+  $('#purchaseSupplier').required = !cash;
+  $('#purchaseSheetKicker').textContent = cash ? 'CASH PURCHASE' : 'MATERIAL PURCHASE';
+  $('#purchaseSheetTitle').textContent = cash ? 'Add cash purchase' : 'Add purchase';
+  $('#purchaseDate').value = today();
+  $('#purchaseDiscount').value = '';
+  $('#purchaseLines').innerHTML = '';
+  $('#purchaseDetailsWrap').classList.add('hidden');
+  $('[data-toggle-details="purchaseDetailsWrap"]').setAttribute('aria-expanded', 'false');
+  $('#cashPurchaseAccountLabel').classList.toggle('hidden', !cash);
+  $('#cashPurchaseAccount').required = cash;
+  $('#cashPurchaseAccount').innerHTML = options(
+    state.paymentAccounts,
+    (r) => `${r.name}${r.bank_name ? ` - ${r.bank_name}` : ''} · ${money(accountBalance(r.id))}`,
+    'Select cash / bank account',
+  );
+  addPurchaseLine();
+  recalcPurchase();
+  openSheet('#purchaseSheet');
+}
+function updatePurchasePaymentDue() {
+  const supplierId = $('#purchasePaymentSupplier').value,
+    balance = supplierId ? supplierBalance(supplierId) : 0;
+  $('#purchasePaymentDue').textContent = supplierId
+    ? `${balance >= 0 ? 'Total outstanding balance' : 'Supplier credit'}: ${money(Math.abs(balance))}`
+    : '';
+  if (supplierId) $('#purchasePaymentAmount').max = String(Math.max(0, balance));
+  else $('#purchasePaymentAmount').removeAttribute('max');
+}
+function openPurchasePayment() {
+  const payableSuppliers = state.suppliers.filter((r) => supplierBalance(r.id) > 0.005);
+  if (!payableSuppliers.length) {
+    toast('No supplier opening amount or purchase balance is outstanding.');
+    return;
+  }
+  if (!state.paymentAccounts.length) {
+    toast('Add a bank or cash account in Banking first.');
+    tab('banking');
+    return;
+  }
+  $('#purchasePaymentForm').reset();
+  $('#purchasePaymentDate').value = today();
+  $('#purchasePaymentSupplier').innerHTML = options(
+    payableSuppliers,
+    (r) => `${r.name}${r.company_name ? ` - ${r.company_name}` : ''} · Due ${money(supplierBalance(r.id))}`,
+    'Select supplier',
+  );
+  $('#purchasePaymentAccount').innerHTML = options(
+    state.paymentAccounts,
+    (r) => `${r.name}${r.bank_name ? ` - ${r.bank_name}` : ''}`,
+    'Select bank / cash account',
+  );
+  $('#purchasePaymentDue').textContent = '';
+  openSheet('#purchasePaymentSheet');
+}
+function updatePayWageSummary(resetAmount = false) {
+  const workerId = $('#payWagesLabourer').value,
+    rows = unpaidAssignments(workerId),
+    gross = rows.reduce((sum, row) => sum + assignmentOutstanding(row), 0),
+    advance = labourAdvanceAvailable(workerId),
+    amountField = $('#payWagesAmount');
+  if (resetAmount) amountField.value = '';
+  else if (Number(amountField.value) > gross) amountField.value = numberInputValue(gross);
+  amountField.max = gross || '';
+  const settle = Math.min(gross, Number(amountField.value || 0)),
+    applied = Math.min(settle, advance),
+    cash = Math.max(0, settle - applied);
+  $('#unpaidWageLines').innerHTML = rows.length
+    ? rows
+        .map(
+          (row) =>
+            `<article class="wage-line"><div><b>${esc(labourTaskLabel(row))}</b><small>${date(row.assignment_date)} · ${qty(row.days)} day${Number(row.days) === 1 ? '' : 's'} × ${money(row.daily_rate)}</small></div><strong>${money(assignmentOutstanding(row))}</strong></article>`,
+        )
+        .join('')
+    : empty('No unpaid wages', 'Choose another labour person.');
+  $('#payWagesGross').textContent = money(gross);
+  $('#payWagesAdvance').textContent = money(advance);
+  $('#payWagesAccount').required = cash > 0;
+  $('#payWagesAccount').disabled = cash === 0;
+  $('#payWagesAccountLabel').classList.toggle('hidden', cash === 0);
+  $('#payWagesAccountHelp').textContent =
+    amountField.value === ''
+      ? 'Enter the amount you want to settle.'
+      : cash > 0
+        ? `${money(applied)} advance will be applied and ${money(cash)} will be paid from this account.`
+        : `${money(applied)} will be settled from the available advance.`;
+}
+function openPayWages(workerId = '') {
+  const workers = state.labourers.filter((row) => labourUnpaidTotal(row.id) > 0);
+  if (!workers.length) {
+    toast('There are no unpaid labour wages.');
+    return;
+  }
+  $('#payWagesForm').reset();
+  $('#payWagesLabourer').innerHTML = options(
+    workers,
+    (row) => `${row.name} · Due ${money(labourUnpaidTotal(row.id))}`,
+    'Select labour person',
+  );
+  $('#payWagesLabourer').value = workers.some((row) => row.id === workerId) ? workerId : '';
+  $('#payWagesDate').value = today();
+  $('#payWagesAccount').innerHTML = options(
+    state.paymentAccounts,
+    (row) => `${row.name}${row.bank_name ? ` - ${row.bank_name}` : ''}`,
+    'Select bank / cash account',
+  );
+  updatePayWageSummary(true);
+  openSheet('#payWagesSheet');
+}
+function openPayAdvance(id = '') {
+  if (!state.labourers.length) {
+    toast('Add a labour person first.');
+    route('labour');
+    return;
+  }
+  if (!state.paymentAccounts.length) {
+    toast('Add a bank or cash account in Banking first.');
+    tab('banking');
+    return;
+  }
+  const row = state.payments.find(
+    (payment) => payment.id === id && payment.payment_type === 'labour_advance',
+  );
+  $('#payAdvanceForm').reset();
+  $('#payAdvanceId').value = row?.id || '';
+  $('#payAdvanceDate').value = row?.payment_date || today();
+  $('#payAdvanceLabourer').innerHTML = options(
+    state.labourers.filter((worker) => worker.active !== false || worker.id === row?.labourer_id),
+    (worker) => worker.name,
+    'Select labour person',
+  );
+  $('#payAdvanceLabourer').value = row?.labourer_id || '';
+  $('#payAdvanceLabourer').disabled = Boolean(row);
+  $('#payAdvanceAccount').innerHTML = options(
+    state.paymentAccounts,
+    (accountRow) => `${accountRow.name}${accountRow.bank_name ? ` - ${accountRow.bank_name}` : ''}`,
+    'Select bank / cash account',
+  );
+  $('#payAdvanceAccount').value = row?.from_account_id || '';
+  $('#payAdvanceAmount').value = row?.amount ?? '';
+  $('#payAdvanceDetails').value = row?.description || '';
+  $('#payAdvanceSheetTitle').textContent = row ? 'Edit advance' : 'Pay advance';
+  openSheet('#payAdvanceSheet');
+}
+function openBankAccount(id = '') {
+  const row = account(id),
+    isCash = row?.account_type === 'Cash';
+  $('#bankAccountForm').reset();
+  $('#bankAccountId').value = row?.id || '';
+  $('#bankAccountName').value = row?.name || '';
+  $('#bankAccountBank').value = row?.bank_name || '';
+  $('#bankAccountNumber').value = row?.account_number || '';
+  $('#bankAccountBank').required = !isCash;
+  $('#bankAccountBank').closest('label').hidden = isCash;
+  $('#bankAccountNumber').closest('label').hidden = isCash;
+  $('#bankAccountOpening').value = numberInputValue(row?.opening_balance);
+  const locked = Boolean(row && accountHasActivity(row.id));
+  $('#bankAccountOpening').readOnly = locked;
+  $('#bankOpeningHelp').textContent = locked
+    ? 'Opening balance is locked because this account has transactions.'
+    : 'Enter the balance in this account before its first app transaction.';
+  $('#bankAccountSheetTitle').textContent = row
+    ? isCash
+      ? 'Edit cash account'
+      : 'Edit bank account'
+    : 'Add bank account';
+  openSheet('#bankAccountSheet');
+}
+async function ensureCashAccount() {
+  let row = cashAccounts()[0];
+  if (row) return row;
+  row = {
+    id: uid(),
+    name: 'Cash',
+    account_type: 'Cash',
+    bank_name: null,
+    account_number: null,
+    opening_balance: 0,
+    active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  const saved = await store.save('payment_accounts', row);
+  upsert(state.paymentAccounts, saved);
+  return saved;
+}
+function updateTransferBalance() {
+  const from = account($('#bankTransferFrom').value);
+  $('#bankTransferBalance').textContent = from
+    ? `Available in ${from.name}: ${money(accountBalance(from.id))}`
+    : 'Select the account money is leaving.';
+}
+async function openBankingTransfer(mode) {
+  const banks = bankAccounts();
+  if (!banks.length) {
+    toast('Add a bank account first.');
+    route('bankAccounts');
+    return;
+  }
+  if (mode === 'bank' && banks.length < 2) {
+    toast('Add at least two bank accounts for a bank transfer.');
+    route('bankAccounts');
+    return;
+  }
+  let cash;
+  try {
+    cash = await ensureCashAccount();
+  } catch (error) {
+    toast(error.message);
+    return;
+  }
+  const config = {
+    withdraw: {
+      title: 'Withdraw cash',
+      kicker: 'BANK TO CASH',
+      from: banks,
+      to: [cash],
+      fromLabel: 'From bank *',
+      toLabel: 'To cash account *',
+      details: 'Cash withdrawal details',
+    },
+    deposit: {
+      title: 'Deposit cash',
+      kicker: 'CASH TO BANK',
+      from: [cash],
+      to: banks,
+      fromLabel: 'From cash account *',
+      toLabel: 'To bank *',
+      details: 'Cash deposit details',
+    },
+    bank: {
+      title: 'Bank to Bank transfer',
+      kicker: 'INTERNAL TRANSFER',
+      from: banks,
+      to: banks,
+      fromLabel: 'From bank *',
+      toLabel: 'To bank *',
+      details: 'Bank transfer details',
+    },
+  }[mode];
+  $('#bankTransferForm').reset();
+  $('#bankTransferMode').value = mode;
+  $('#bankTransferDate').value = today();
+  $('#bankTransferSheetTitle').textContent = config.title;
+  $('#bankTransferKicker').textContent = config.kicker;
+  $('#bankTransferFromLabel').childNodes[0].nodeValue = config.fromLabel;
+  $('#bankTransferToLabel').childNodes[0].nodeValue = config.toLabel;
+  $('#bankTransferFrom').innerHTML = options(
+    config.from,
+    (row) => `${row.name}${row.bank_name ? ` - ${row.bank_name}` : ''}`,
+    'Select source account',
+  );
+  $('#bankTransferTo').innerHTML = options(
+    config.to,
+    (row) => `${row.name}${row.bank_name ? ` - ${row.bank_name}` : ''}`,
+    'Select destination account',
+  );
+  if (config.from.length === 1) $('#bankTransferFrom').value = config.from[0].id;
+  if (config.to.length === 1) $('#bankTransferTo').value = config.to[0].id;
+  $('#bankTransferDetails').placeholder = config.details;
+  updateTransferBalance();
+  openSheet('#bankTransferSheet');
+}
+function showBankingExpenseTab(name) {
+  $$('[data-banking-expense-tab]').forEach((button) =>
+    button.classList.toggle('active', button.dataset.bankingExpenseTab === name),
+  );
+  $('#bankingExpenseChargesPanel').classList.toggle('active', name === 'charges');
+  $('#bankingExpenseListPanel').classList.toggle('active', name === 'list');
+}
+function openBankingExpense() {
+  if (!state.expenseCategories.length) {
+    toast('Add an expense type first.');
+    showBankingExpenseTab('list');
+    return;
+  }
+  if (!state.paymentAccounts.length) {
+    toast('Add a bank or cash account first.');
+    route('bankAccounts');
+    return;
+  }
+  $('#bankingExpenseForm').reset();
+  $('#bankingExpenseDate').value = today();
+  $('#bankingExpenseCategory').innerHTML = options(
+    state.expenseCategories,
+    (row) => row.name,
+    'Select expense',
+  );
+  $('#bankingExpenseAccount').innerHTML = options(
+    state.paymentAccounts,
+    (row) => `${row.name}${row.bank_name ? ` - ${row.bank_name}` : ''}`,
+    'Select bank / cash account',
+  );
+  openSheet('#bankingExpenseSheet');
+}
+
+function detailRows(rows) {
+  return `<div class="detail-grid">${rows.map(([label, value]) => `<div class="detail-row"><span>${esc(label)}</span><b>${esc(value ?? '')}</b></div>`).join('')}</div>`;
+}
+function setupDetail(
+  type,
+  row,
+  { title, kicker, html, actions = '', editable = true, deletable = true, documentName = '' },
+) {
+  state.detail = { type, id: row.id, documentName: documentName || `${type}-${row.id}` };
+  $('#detailKicker').textContent = kicker;
+  $('#detailTitle').textContent = title;
+  $('#detailBody').innerHTML = html;
+  $('#detailActions').innerHTML = actions;
+  const download = $('#detailActions [data-detail-download]');
+  if (download)
+    download.insertAdjacentHTML(
+      'afterend',
+      '<button class="button whatsapp-button block" data-detail-share><img src="assets/whatsapp.svg" width="18" height="18" alt="">Share on WhatsApp</button>',
+    );
+  $('#detailEdit').classList.toggle('hidden', !editable);
+  $('#dangerZone').classList.toggle('hidden', !deletable || state.role !== 'owner');
+  $('#detailDelete').textContent = `Delete ${type.replace(/([A-Z])/g, ' $1').toLowerCase()}`;
+  closeSheets();
+  openSheet('#detailSheet');
+}
+const detailCard = (eyebrow, title, amount, rows, pdf = false) =>
+  `<article class="detail-card ${pdf ? 'pdf-document' : ''}"><div class="detail-hero"><p>${esc(eyebrow)}</p><h3>${esc(title)}</h3>${amount ? `<div class="detail-amount">${esc(amount)}</div>` : ''}</div>${detailRows(rows)}${pdf ? businessContact() : ''}</article>`;
+function viewParty(id) {
+  const r = party(id);
+  if (r)
+    setupDetail('party', r, {
+      title: r.name,
+      kicker: 'PARTY DETAILS',
+      html: detailCard(r.party_number || shortCode('PTY', r.id), r.name, '', [
+        ['Mobile number', r.phone],
+        ['Address', r.address],
+      ]),
+    });
+}
+function viewProject(id) {
+  const r = project(id),
+    metric = r && projectMetrics(r);
+  if (r)
+    setupDetail('project', r, {
+      title: r.name,
+      kicker: 'PROJECT DETAILS',
+      html: detailCard(r.project_number, r.name, '', [
+        ['Party', party(r.party_id)?.name],
+        ['Location', r.location],
+        ['Quote', r.quote_created ? 'Created' : 'Not created'],
+        ['Quote status', r.status],
+        ['Opening invoice', metric.openingInvoice ? money(metric.openingInvoice) : null],
+        ['Opening received', metric.openingReceived ? money(metric.openingReceived) : null],
+        ['Opening receivable', projectHasOpening(r) ? money(metric.openingReceivable) : null],
+        ['Opening current profit', projectHasOpening(r) ? money(metric.openingProfit) : null],
+        ['Project status', r.closed ? 'Closed' : 'Active'],
+      ]),
+    });
+}
+const businessDocumentHeader = (kind) =>
+  `<header class="document-header"><div class="document-brand"><p>${esc(kind)}</p><h2>${esc(PRINT_BUSINESS_NAME)}</h2></div><img src="assets/mughal-logo.png" alt="Company logo">${businessContact()}</header>`;
+const projectDocumentHeader = (kind, number, job, documentDate) =>
+  `${businessDocumentHeader(kind)}<section class="document-meta"><div><small>CUSTOMER</small><b>${esc(party(job.party_id)?.name || '')}</b><span>${esc(party(job.party_id)?.phone || '')}</span></div><div><small>PROJECT</small><b>${esc(job.name)}</b><span>${esc(job.location || '')}</span></div><div><small>DATE</small><b>${esc(date(documentDate))}</b></div><div><small>${kind.includes('INVOICE') ? 'INVOICE NO.' : 'QUOTE NO.'}</small><b>${esc(number)}</b></div></section>`;
+const documentFooter = (rows) =>
+  `<footer class="document-footer">${rows.map(([label, value]) => `<div><b>${esc(label)}</b><span>${esc(value ?? '')}</span></div>`).join('')}</footer>`;
+function quoteDocument(r) {
+  const prices =
+    r.pricing_mode === 'both'
+      ? [
+          ['With material', r.price_with_material],
+          ['Without material', r.price_without_material],
+        ]
+      : r.pricing_mode === 'without_material'
+        ? [['Without material', r.price_without_material]]
+        : [['With material', r.price_with_material]];
+  return `<article class="detail-card pdf-document invoice-document quote-document">${projectDocumentHeader('PROJECT QUOTATION', r.project_number, r, r.quote_date)}<section class="document-table"><div class="document-table-head"><span>Project scope</span><span>Option</span><span>Amount</span></div>${prices.map(([label, value], index) => `<div class="document-table-row"><span>${index === 0 ? esc(r.description || '') : ''}</span><span>${esc(label)}</span><strong>${money(value)}</strong></div>`).join('')}</section>${documentFooter(
+    [
+      ['Project period', [date(r.start_date), date(r.expected_end_date)].filter(Boolean).join(' — ')],
+      ['Number of days', r.days_to_complete ?? ''],
+      ['Payment terms', r.payment_terms],
+      ['Other details', r.notes],
+      ['Status', r.status],
+    ],
+  )}${disclaimerFooter()}</article>`;
+}
+function viewQuote(id) {
+  const r = project(id);
+  if (!r) return;
+  const approved = r.status === 'Approved';
+  setupDetail('quote', r, {
+    title: r.name,
+    kicker: 'QUOTE DETAILS',
+    html: quoteDocument(r),
+    actions: `<button class="button secondary block" data-detail-download>Download quote PDF</button>${approved ? '' : `<button class="button primary block" data-approve-quote="${r.id}">Approve quote</button>`}`,
+    deletable: !approved,
+    documentName: `quote-${r.project_number}`,
+  });
+}
+function invoiceDocument(r) {
+  const job = project(r.project_id);
+  if (!job) return '';
+  const metric = projectMetrics(job),
+    changes = metric.entries.filter((x) => ['scope_increase', 'scope_decrease'].includes(x.entry_type)),
+    lines = [
+      ['Base Contract', job.description, metric.original],
+      ...changes.map((change) => [
+        change.entry_type === 'scope_increase' ? 'Addition' : 'Deduction',
+        change.description,
+        (change.entry_type === 'scope_decrease' ? -1 : 1) * Number(change.amount),
+      ]),
+    ];
+  return `<article class="detail-card pdf-document invoice-document project-invoice-document">${projectDocumentHeader('PROJECT INVOICE', r.invoice_number, job, r.invoice_date)}<section class="document-table"><div class="document-table-head"><span>Type</span><span>Project scope</span><span>Amount</span></div>${lines.map(([type, scope, amount]) => `<div class="document-table-row"><span>${esc(type)}</span><span>${esc(scope || '')}</span><strong class="${amount < 0 ? 'negative' : ''}">${amount < 0 ? '− ' : ''}${money(Math.abs(amount))}</strong></div>`).join('')}<div class="document-total"><span>Invoice total</span><strong>${money(metric.revised)}</strong></div></section>${documentFooter(
+    [
+      ['Payment terms', job.payment_terms],
+      ['Other details', job.notes],
+      ['Project status', job.closed ? 'Closed' : 'Active'],
+    ],
+  )}${disclaimerFooter()}</article>`;
+}
+function viewInvoice(id) {
+  const r = state.invoices.find((x) => x.id === id);
+  if (r)
+    setupDetail('invoice', r, {
+      title: r.invoice_number,
+      kicker: 'INVOICE DETAILS',
+      html: invoiceDocument(r),
+      actions: '<button class="button primary block" data-detail-download>Download invoice PDF</button>',
+      editable: false,
+      documentName: `invoice-${r.invoice_number}`,
+    });
+}
+function viewReceipt(id) {
+  const r = state.payments.find((x) => x.id === id),
+    job = project(r?.project_id);
+  if (r)
+    setupDetail('receipt', r, {
+      title: r.payment_number || 'Payment receipt',
+      kicker: 'RECEIVED PAYMENT',
+      html: detailCard(
+        `PAYMENT RECEIPT · ${r.payment_number || shortCode('RCP', r.id)}`,
+        job?.name || 'Project payment',
+        money(r.amount),
+        [
+          ['Business', PRINT_BUSINESS_NAME],
+          ['Party', party(r.party_id)?.name],
+          ['Project', job?.name],
+          ['Date', date(r.payment_date)],
+          ['Received in', account(r.to_account_id)?.name],
+          ['Details', r.description],
+          ['Notes', r.notes],
+        ],
+        true,
+      ),
+      actions: '<button class="button primary block" data-detail-download>Download payment PDF</button>',
+      documentName: `payment-${r.payment_number || r.id}`,
+    });
+}
+function viewLabourPerson(id) {
+  const r = labourer(id);
+  if (r)
+    setupDetail('labourPerson', r, {
+      title: r.name,
+      kicker: 'LABOUR PERSON',
+      html: detailCard(r.labour_number || 'WORKFORCE RECORD', r.name, `${money(r.daily_wage_rate)} / day`, [
+        ['Mobile number', r.mobile],
+        ['CNIC number', r.cnic],
+        ['Record date', date(r.record_date || r.created_at)],
+        ['Date of joining', date(r.joining_date)],
+        ['Speciality', r.speciality],
+        ['Status', r.active === false ? 'Inactive' : 'Active'],
+      ]),
+    });
+}
+function viewLabourWage(id) {
+  const r = state.labourWageSettlements.find((row) => row.id === id),
+    worker = labourer(r?.labourer_id),
+    items = state.labourWageSettlementItems.filter((row) => row.settlement_id === id),
+    payment = state.payments.find((row) => row.id === r?.payment_id);
+  if (r)
+    setupDetail('labourWage', r, {
+      title: worker?.name || 'Wage payment',
+      kicker: 'WAGE SETTLEMENT',
+      html: `${detailCard(date(r.settlement_date), worker?.name || 'Labour', money(r.gross_wages), [
+        ['Unpaid wages settled', money(r.gross_wages)],
+        ['Advance adjusted', money(r.advance_applied)],
+        ['Paid from account', money(r.cash_paid)],
+        ['Account', r.cash_paid > 0 ? account(payment?.from_account_id)?.name : 'Advance only'],
+        ['Details', r.notes],
+      ])}<div class="scope-list"><h4>Paid assignments</h4>${items
+        .map((item) => {
+          const assignment = state.labourAssignments.find((row) => row.id === item.labour_assignment_id);
+          return `<div class="scope-item"><div><b>${esc(assignment ? labourTaskLabel(assignment) : 'Labour assignment')}</b><small>${date(assignment?.assignment_date)} · ${qty(assignment?.days)} day${Number(assignment?.days) === 1 ? '' : 's'}</small></div><strong>${money(item.amount)}</strong></div>`;
+        })
+        .join('')}</div>`,
+      editable: false,
+      deletable: false,
+    });
+}
+function viewLabourAdvance(id) {
+  const r = state.payments.find((row) => row.id === id),
+    worker = labourer(r?.labourer_id);
+  if (r)
+    setupDetail('labourAdvance', r, {
+      title: worker?.name || 'Labour advance',
+      kicker: 'ADVANCE PAYMENT',
+      html: detailCard(r.payment_number || 'LABOUR ADVANCE', worker?.name || 'Labour', money(r.amount), [
+        ['Date', date(r.payment_date)],
+        ['Paid from', account(r.from_account_id)?.name],
+        ['Details', r.description],
+        ['Advance balance', money(labourAdvanceAvailable(r.labourer_id))],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewLabourAssignment(id) {
+  const r = state.labourAssignments.find((x) => x.id === id),
+    job = project(r?.project_id),
+    worker = labourer(r?.labourer_id);
+  if (r)
+    setupDetail('labourAssignment', r, {
+      title: worker?.name || 'Labour assignment',
+      kicker: 'ASSIGNED LABOUR',
+      html: detailCard(
+        date(r.assignment_date),
+        worker?.name || 'Labour',
+        money(r.amount ?? Number(r.days) * Number(r.daily_rate)),
+        [
+          ['Project', job ? projectLabel(job) : 'Project'],
+          ['Day worked', Number(r.days) === 0.5 ? 'Half day' : 'Full day'],
+          ['Daily rate', money(r.daily_rate)],
+          ['Actual wage cost', money(r.amount ?? Number(r.days) * Number(r.daily_rate))],
+          ['Details', r.notes],
+        ],
+      ),
+      editable: false,
+      deletable: false,
+    });
+}
+function viewMaterialAssignment(id) {
+  const r = state.materialMovements.find((x) => x.id === id),
+    item = material(r?.material_id),
+    job = project(r?.project_id),
+    returned = r?.movement_type === 'project_return';
+  if (r)
+    setupDetail('materialAssignment', r, {
+      title: item?.name || 'Material',
+      kicker: returned ? 'RETURNED MATERIAL' : 'ASSIGNED MATERIAL',
+      html: detailCard(
+        date(r.movement_date),
+        item?.name || 'Material',
+        money(Number(r.quantity) * Number(r.unit_cost)),
+        [
+          ['Movement', returned ? 'Returned to stock' : 'Assigned to project'],
+          ['Project', job ? projectLabel(job) : ''],
+          ['Quantity', `${qty(r.quantity)} ${item?.unit || 'units'}`],
+          ['Purchase cost per unit', money(r.unit_cost)],
+          ['Total material cost', money(Number(r.quantity) * Number(r.unit_cost))],
+          ['Details', r.notes],
+        ],
+      ),
+      editable: false,
+      deletable: false,
+    });
+}
+function viewExpenseCategory(id) {
+  const r = expenseCategory(id);
+  if (r)
+    setupDetail('expenseCategory', r, {
+      title: r.name,
+      kicker: 'EXPENSE MASTER',
+      html: detailCard('PROJECT EXPENSE TYPE', r.name, '', [
+        ['Details', r.description],
+        ['Status', r.active === false ? 'Inactive' : 'Active'],
+      ]),
+    });
+}
+function viewExpenseCharge(id) {
+  const r = state.entries.find((x) => x.id === id),
+    job = project(r?.project_id),
+    cat = expenseCategory(r?.expense_category_id);
+  if (r)
+    setupDetail('expenseCharge', r, {
+      title: cat?.name || r.description,
+      kicker: 'CHARGED EXPENSE',
+      html: detailCard(date(r.entry_date), cat?.name || r.description, money(r.amount), [
+        ['Project', job ? projectLabel(job) : 'Project'],
+        ['Expense', cat?.name || r.description],
+        ['Details', r.notes],
+      ]),
+      editable: false,
+      deletable: false,
+    });
+}
+function orderInvoiceDocument(order) {
+  const invoice = orderInvoice(order),
+    lines = orderLines(order.id),
+    subtotal =
+      order.subtotal ??
+      lines.reduce((sum, line) => sum + Number(line.amount ?? Number(line.quantity) * Number(line.rate)), 0);
+  return `<article class="detail-card pdf-document invoice-document order-invoice-document">${businessDocumentHeader('ORDER INVOICE')}<section class="document-meta"><div><small>CUSTOMER</small><b>${esc(order.customer_name)}</b><span>${esc(order.customer_phone || '')}</span></div><div><small>ORDER</small><b>${esc(order.order_number)}</b></div><div><small>DATE</small><b>${esc(date(invoice?.invoice_date || order.order_date))}</b></div><div><small>INVOICE NO.</small><b>${esc(invoice?.invoice_number || order.order_number)}</b></div></section><div class="order-document-table"><table class="order-invoice-table"><thead><tr><th>Item / details</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${lines.map((line) => `<tr><td><b>${esc(line.item_name)}</b><small>${esc(line.details || '')}</small></td><td class="numeric">${qty(line.quantity)}</td><td class="numeric">${money(line.rate)}</td><td class="numeric">${money(line.amount ?? Number(line.quantity) * Number(line.rate))}</td></tr>`).join('')}</tbody></table></div><dl class="order-document-totals"><div><dt>Subtotal</dt><dd>${money(subtotal)}</dd></div><div><dt>Discount</dt><dd class="negative">${Number(order.discount) > 0 ? '− ' : ''}${money(order.discount)}</dd></div><div class="invoice-grand-total"><dt>Grand total</dt><dd>${money(order.amount)}</dd></div></dl>${disclaimerFooter()}</article>`;
+}
+function viewOrderInvoice(id) {
+  const order = walkInOrder(id),
+    invoice = order && orderInvoice(order);
+  if (order)
+    setupDetail('orderInvoice', order, {
+      title: invoice?.invoice_number || order.order_number,
+      kicker: 'ORDER INVOICE',
+      html: orderInvoiceDocument(order),
+      actions: '<button class="button primary block" data-detail-download>Download invoice PDF</button>',
+      documentName: `order-invoice-${invoice?.invoice_number || order.order_number}`,
+    });
+}
+function viewOrderReceipt(id) {
+  const r = state.payments.find((x) => x.id === id),
+    order = walkInOrder(r?.walk_in_order_id);
+  if (r)
+    setupDetail('orderReceipt', r, {
+      title: r.payment_number,
+      kicker: 'ORDER RECEIPT',
+      html: detailCard(
+        `PAYMENT RECEIPT · ${r.payment_number}`,
+        order?.customer_name || 'Order receipt',
+        money(r.amount),
+        [
+          ['Business', PRINT_BUSINESS_NAME],
+          ['Order', order?.order_number],
+          ['Customer', order?.customer_name],
+          ['Date', date(r.payment_date)],
+          ['Received in', account(r.to_account_id)?.name],
+          ['Details', r.description],
+        ],
+        true,
+      ),
+      actions: '<button class="button primary block" data-detail-download>Download receipt PDF</button>',
+      documentName: `order-receipt-${r.payment_number}`,
+    });
+}
+function viewOrderExpense(id) {
+  const r = state.walkInEntries.find((x) => x.id === id),
+    order = walkInOrder(r?.walk_in_order_id),
+    cat = expenseCategory(r?.expense_category_id);
+  if (r)
+    setupDetail('orderExpense', r, {
+      title: cat?.name || r.description,
+      kicker: 'ORDER EXPENSE',
+      html: detailCard(date(r.entry_date), cat?.name || r.description, money(r.amount), [
+        ['Order', order ? orderLabel(order) : 'Order'],
+        ['Expense', cat?.name || r.description],
+        ['Details', r.notes],
+      ]),
+      editable: false,
+      deletable: false,
+    });
+}
+function viewOrderMaterial(id) {
+  const r = state.materialMovements.find((x) => x.id === id),
+    order = walkInOrder(r?.walk_in_order_id),
+    item = material(r?.material_id),
+    returned = r?.movement_type === 'walk_in_return';
+  if (r)
+    setupDetail('orderMaterial', r, {
+      title: item?.name || 'Material',
+      kicker: returned ? 'RETURNED MATERIAL' : 'ASSIGNED MATERIAL',
+      html: detailCard(
+        date(r.movement_date),
+        item?.name || 'Material',
+        money(Number(r.quantity) * Number(r.unit_cost)),
+        [
+          ['Order', order ? orderLabel(order) : 'Order'],
+          ['Movement', returned ? 'Returned to stock' : 'Assigned to order'],
+          ['Quantity', `${qty(r.quantity)} ${item?.unit || 'units'}`],
+          ['Purchase cost per unit', money(r.unit_cost)],
+          ['Details', r.notes],
+        ],
+      ),
+      editable: false,
+      deletable: false,
+    });
+}
+function viewOrderLabour(id) {
+  const r = state.labourAssignments.find((x) => x.id === id),
+    order = walkInOrder(r?.walk_in_order_id),
+    worker = labourer(r?.labourer_id);
+  if (r)
+    setupDetail('orderLabour', r, {
+      title: worker?.name || 'Labour',
+      kicker: 'ORDER LABOUR',
+      html: detailCard(
+        date(r.assignment_date),
+        worker?.name || 'Labour',
+        money(r.amount ?? Number(r.days) * Number(r.daily_rate)),
+        [
+          ['Order', order ? orderLabel(order) : 'Order'],
+          ['Day worked', Number(r.days) === 0.5 ? 'Half day' : 'Full day'],
+          ['Daily rate', money(r.daily_rate)],
+          ['Actual wage cost', money(r.amount ?? Number(r.days) * Number(r.daily_rate))],
+          ['Details', r.notes],
+        ],
+      ),
+      editable: false,
+      deletable: false,
+    });
+}
+function viewOrderItem(id) {
+  const item = state.orderItems.find((r) => r.id === id);
+  if (item)
+    setupDetail('orderItem', item, {
+      title: item.name,
+      kicker: 'INVOICE ITEM',
+      html: detailCard('ORDER INVOICE MASTER', item.name, '', [
+        ['Details', item.details],
+        ['Status', item.active === false ? 'Inactive' : 'Active'],
+      ]),
+    });
+}
+function viewSupplier(id) {
+  const r = supplier(id);
+  if (r)
+    setupDetail('supplier', r, {
+      title: r.name,
+      kicker: 'SUPPLIER DETAILS',
+      html: detailCard(r.supplier_number || shortCode('SUP', r.id), r.name, money(supplierBalance(r.id)), [
+        ['Opening amount', money(r.opening_amount)],
+        ['Opening paid', Number(r.opening_amount_paid || 0) ? money(r.opening_amount_paid) : null],
+        ['Outstanding balance', money(supplierBalance(r.id))],
+        ['Company name', r.company_name || r.contact_name],
+        ['Mobile number', r.phone],
+        ['Address', r.address],
+        ['Details', r.notes],
+      ]),
+    });
+}
+function viewPurchaseMaterial(id) {
+  const r = material(id),
+    metric = r && materialMetrics(r),
+    pool = isConsumable(r);
+  if (!r) return;
+  const history = pool
+    ? state.materialMovements
+        .filter((x) => x.material_id === id)
+        .map((x) => {
+          const target = x.project_id
+              ? projectLabel(project(x.project_id) || {})
+              : x.walk_in_order_id
+                ? orderLabel(walkInOrder(x.walk_in_order_id) || {})
+                : x.supplier_name || 'Pool',
+            returned = ['project_return', 'walk_in_return'].includes(x.movement_type);
+          return `<div class="order-line-row"><div><b>${esc(x.movement_type === 'purchase' ? 'Purchased' : returned ? 'Returned' : 'Allocated')} · ${esc(target)}</b><small>${date(x.movement_date)}${x.notes ? ` · ${esc(x.notes)}` : ''}</small></div><strong>${returned ? '+' : ''}${money(movementValue(x))}</strong></div>`;
+        })
+        .join('')
+    : '';
+  setupDetail('purchaseMaterial', r, {
+    title: r.name,
+    kicker: 'MATERIAL DETAILS',
+    html:
+      detailCard(
+        r.sku || shortCode('MAT', r.id),
+        r.name,
+        pool ? money(metric.stock) : `${qty(metric.stock)} ${r.unit}`,
+        [
+          ['Material ID', r.sku || shortCode('MAT', r.id)],
+          ['Tracking', pool ? 'Consumable pool' : 'Trackable stock'],
+          [
+            pool ? 'Opening pool' : 'Opening quantity',
+            pool ? money(metric.opening) : `${qty(metric.opening)} ${r.unit}`,
+          ],
+          [pool ? 'Pool purchased' : 'Unit', pool ? money(metric.purchased) : r.unit],
+          [
+            pool ? 'Pool allocated' : 'Latest purchase cost',
+            pool ? money(metric.used) : money(metric.unitCost),
+          ],
+          ['Pool returned', pool ? money(metric.returned) : null],
+          ['Details', r.details],
+          ['Status', r.active === false ? 'Inactive' : 'Active'],
+        ],
+      ) +
+      (pool
+        ? `<div class="order-line-list">${history || '<p class="note">No pool activity yet.</p>'}</div>`
+        : ''),
+  });
+}
+function purchaseDocument(r) {
+  const vendor = supplier(r.supplier_id),
+    lines = purchaseLines(r.id);
+  return `<article class="detail-card pdf-document"><div class="detail-hero"><p>PURCHASE · ${esc(r.bill_number)}</p><h3>${esc(vendor?.name || 'Supplier')}</h3><div class="detail-amount">${money(r.total_amount)}</div></div>${detailRows(
+    [
+      ['Business', PRINT_BUSINESS_NAME],
+      ['Supplier', vendor?.name],
+      ['Company', vendor?.company_name || vendor?.contact_name],
+      ['Purchase date', date(r.bill_date)],
+      ['Details', r.notes],
+    ],
+  )}<div class="order-line-list">${lines
+    .map((line) => {
+      const item = material(line.material_id),
+        pool = isConsumable(item);
+      return `<div class="order-line-row"><div><b>${esc(item?.name || 'Material')}</b><small>${pool ? 'Consumable pool' : `${qty(line.quantity)} ${esc(item?.unit || 'units')} × ${money(line.unit_cost)}`}${line.details ? ` · ${esc(line.details)}` : ''}</small></div><strong>${money(line.line_total ?? movementValue(line))}</strong></div>`;
+    })
+    .join('')}</div>${detailRows([
+    ['Subtotal', money(r.subtotal ?? Number(r.total_amount) + Number(r.discount || 0))],
+    ['Discount', `− ${money(r.discount)}`],
+    ['Grand total', money(r.total_amount)],
+    ['Amount paid', money(r.amount_paid)],
+    ['Balance due', money(purchaseDue(r))],
+    ['Payment status', r.payment_status],
+  ])}</article>`;
+}
+function viewPurchase(id) {
+  const r = purchaseBill(id);
+  if (r)
+    setupDetail('purchase', r, {
+      title: r.bill_number,
+      kicker: 'PURCHASE DETAILS',
+      html: purchaseDocument(r),
+      actions: '<button class="button primary block" data-detail-download>Download purchase PDF</button>',
+      editable: false,
+      deletable: false,
+      documentName: `purchase-${r.bill_number}`,
+    });
+}
+function viewPurchasePayment(id) {
+  const r = state.payments.find((x) => x.id === id),
+    vendor = supplier(r?.supplier_id),
+    bill = purchaseBill(r?.purchase_bill_id);
+  if (r)
+    setupDetail('purchasePayment', r, {
+      title: r.payment_number,
+      kicker: 'PURCHASE PAYMENT',
+      html: detailCard(
+        `SUPPLIER PAYMENT · ${r.payment_number}`,
+        vendor?.name || 'Supplier payment',
+        money(r.amount),
+        [
+          ['Business', state.business?.name || PRINT_BUSINESS_NAME],
+          ['Supplier', vendor?.name],
+          ['Company', vendor?.company_name || vendor?.contact_name],
+          ['Applied to', bill?.bill_number || 'Overall supplier balance'],
+          ['Date', date(r.payment_date)],
+          ['Paid from', account(r.from_account_id)?.name],
+          ['Details', r.description],
+        ],
+        true,
+      ),
+      actions: '<button class="button primary block" data-detail-download>Download payment PDF</button>',
+      editable: false,
+      deletable: false,
+      documentName: `purchase-payment-${r.payment_number}`,
+    });
+}
+function viewBankAccount(id) {
+  const r = account(id);
+  if (r)
+    setupDetail('bankAccount', r, {
+      title: r.name,
+      kicker: 'BANK ACCOUNT',
+      html: detailCard(r.bank_name || 'BANK ACCOUNT', r.name, money(accountBalance(r.id)), [
+        ['Bank name', r.bank_name],
+        ['Account number', r.account_number],
+        ['Opening balance', money(r.opening_balance)],
+        ['Current balance', money(accountBalance(r.id))],
+        [
+          'Transactions',
+          String(
+            state.payments.filter((row) => row.from_account_id === r.id || row.to_account_id === r.id).length,
+          ),
+        ],
+        ['Status', r.active === false ? 'Inactive' : 'Active'],
+      ]),
+      deletable: false,
+    });
+}
+function viewBankTransferEntry(id) {
+  const r = state.payments.find((row) => row.id === id),
+    from = account(r?.from_account_id),
+    to = account(r?.to_account_id);
+  if (r)
+    setupDetail('bankTransferEntry', r, {
+      title: r.payment_number || 'Money transfer',
+      kicker: 'TRANSFER DETAILS',
+      html: detailCard(
+        r.payment_number || shortCode('TRF', r.id),
+        `${from?.name || 'Account'} → ${to?.name || 'Account'}`,
+        money(r.amount),
+        [
+          ['Date', date(r.payment_date)],
+          ['From account', from?.name],
+          ['From bank', from?.bank_name || from?.account_type],
+          ['To account', to?.name],
+          ['To bank', to?.bank_name || to?.account_type],
+          ['Details', r.description],
+        ],
+      ),
+      editable: false,
+      deletable: false,
+    });
+}
+function viewBankingExpense(id) {
+  const r = state.payments.find((row) => row.id === id),
+    cat = expenseCategory(r?.expense_category_id || r?.reference);
+  if (r)
+    setupDetail('bankingExpense', r, {
+      title: cat?.name || r.description,
+      kicker: 'BUSINESS EXPENSE',
+      html: detailCard(
+        r.payment_number || shortCode('EXP', r.id),
+        cat?.name || r.description,
+        money(r.amount),
+        [
+          ['Date', date(r.payment_date)],
+          ['Expense type', cat?.name || r.description],
+          ['Paid from', account(r.from_account_id)?.name],
+          ['Details', r.notes],
+          ['Allocation', 'Overall business overhead'],
+        ],
+      ),
+      editable: false,
+      deletable: false,
+    });
+}
+const detailPdfName = () => `${safeName(state.detail?.documentName || 'document')}.pdf`;
+const detailPdfOptions = () => ({
+  margin: [8, 8, 8, 8],
+  filename: detailPdfName(),
+  image: { type: 'jpeg', quality: 0.98 },
+  html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+  jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+  pagebreak: { mode: ['css', 'legacy'] },
+});
+function downloadPdfBlob(blob, filename) {
+  const url = URL.createObjectURL(blob),
+    link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function downloadCurrent(button) {
+  const node = $('#detailBody .pdf-document');
+  if (!node) return;
+  if (typeof html2pdf === 'undefined')
+    throw new Error('PDF download is unavailable. Refresh with an internet connection.');
+  node.classList.add('pdf-exporting');
+  try {
+    await working('Preparing your PDF…', button, () => html2pdf().set(detailPdfOptions()).from(node).save());
+    toast('PDF downloaded.');
+  } finally {
+    node.classList.remove('pdf-exporting');
+  }
+}
+async function shareCurrent(button) {
+  const node = $('#detailBody .pdf-document');
+  if (!node) return;
+  if (typeof html2pdf === 'undefined')
+    throw new Error('PDF sharing is unavailable. Refresh with an internet connection.');
+  node.classList.add('pdf-exporting');
+  try {
+    await working('Preparing PDF for WhatsApp…', button, async () => {
+      const worker = html2pdf().set(detailPdfOptions()).from(node);
+      if (typeof worker.outputPdf !== 'function')
+        throw new Error('PDF sharing is not supported by this browser.');
+      const blob = await worker.outputPdf('blob'),
+        file = new File([blob], detailPdfName(), { type: 'application/pdf' }),
+        shareData = {
+          files: [file],
+          title: state.detail?.documentName || 'Mughal Interior document',
+          text: 'Mughal Interior and Decor document',
+        };
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        try {
+          await navigator.share(shareData);
+          toast('PDF shared.');
+        } catch (error) {
+          if (error.name !== 'AbortError') throw error;
+        }
+      } else {
+        downloadPdfBlob(blob, detailPdfName());
+        window.open(
+          `https://wa.me/?text=${encodeURIComponent('Please attach the downloaded ' + detailPdfName())}`,
+          '_blank',
+          'noopener',
+        );
+        toast('PDF downloaded. Attach it to your WhatsApp chat.');
+      }
+    });
+  } finally {
+    node.classList.remove('pdf-exporting');
+  }
+}
+function openDisclaimerEditor() {
+  if (!state.business) state.business = { name: PRINT_BUSINESS_NAME };
+  $('#disclaimerText').value = documentDisclaimer();
+  $('#printProprietor').value = printDetail('document_proprietor');
+  $('#printAddress').value = printDetail('document_address');
+  $('#printWhatsapp').value = printDetail('document_whatsapp');
+  $('#printPartnerName').value = partnerName();
+  closeSheets();
+  openSheet('#disclaimerSheet');
+}
+function openApproval(id) {
+  const r = project(id),
+    choices = [];
+  if (Number(r.price_with_material) > 0)
+    choices.push(['with_material', 'With material', r.price_with_material]);
+  if (Number(r.price_without_material) > 0)
+    choices.push(['without_material', 'Without material', r.price_without_material]);
+  if (!choices.length) {
+    toast('Add a quotation amount before approval.');
+    return;
+  }
+  state.detail = { type: 'quote', id };
+  $('#approvalChoices').innerHTML = choices
+    .map(
+      (c, i) =>
+        `<label class="approve-choice"><input type="radio" name="approvalType" value="${c[0]}" ${i === 0 ? 'checked' : ''}><span><b>${c[1]}</b><small>${money(c[2])}</small></span></label>`,
+    )
+    .join('');
+  closeSheets();
+  openSheet('#approvalSheet');
+}
+function showLabourTab(name) {
+  $$('[data-labour-tab]').forEach((b) => b.classList.toggle('active', b.dataset.labourTab === name));
+  $('#labourPersonsPanel').classList.toggle('active', name === 'persons');
+  $('#labourAssignmentsPanel').classList.toggle('active', name === 'assignments');
+}
+function showExpenseTab(name) {
+  $$('[data-expense-tab]').forEach((b) => b.classList.toggle('active', b.dataset.expenseTab === name));
+  $('#expenseListPanel').classList.toggle('active', name === 'list');
+  $('#expenseChargesPanel').classList.toggle('active', name === 'charges');
+}
+
+$('#loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const error = $('#loginError');
+  error.classList.add('hidden');
+  try {
+    await working('Signing you in…', e.submitter, async () => {
+      await store.signIn($('#loginEmail').value, $('#loginPassword').value);
+      await boot();
+    });
+  } catch (err) {
+    error.textContent = err.message;
+    error.classList.remove('hidden');
+  }
+});
+$('#partyForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = party($('#partyId').value),
+    row = {
+      id: existing?.id || $('#partyId').value,
+      party_number: existing?.party_number || $('#partyCode').value,
+      name: $('#partyName').value.trim(),
+      phone: $('#partyPhone').value.trim() || null,
+      party_type: existing?.party_type || 'Individual',
+      address: $('#partyAddress').value.trim() || null,
+      notes: existing?.notes || null,
+      created_at: existing?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  try {
+    await working(existing ? 'Updating party…' : 'Saving party…', e.submitter, async () => {
+      upsert(state.parties, await store.save('parties', row, Boolean(existing)));
+      closeSheets();
+      render();
+      toast(existing ? 'Party updated.' : 'Party added.');
+    });
+  } catch {}
+});
+$('#projectForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const customer = party($('#projectParty').value);
+  if (!customer) {
+    toast('Select a party.');
+    return;
+  }
+  const existing = project($('#projectId').value),
+    opening = {
+      opening_invoice_amount: Number($('#projectOpeningInvoice').value || 0),
+      opening_received_amount: Number($('#projectOpeningReceived').value || 0),
+      opening_expenses_amount: Number($('#projectOpeningExpenses').value || 0),
+      opening_material_amount: Number($('#projectOpeningMaterial').value || 0),
+      opening_labour_amount: Number($('#projectOpeningLabour').value || 0),
+    },
+    openingStatus = opening.opening_invoice_amount > 0 ? 'Approved' : existing?.status || 'Pending',
+    row = existing
+      ? {
+          id: existing.id,
+          name: $('#projectName').value.trim(),
+          party_id: customer.id,
+          location: $('#projectLocation').value.trim() || null,
+          status: openingStatus,
+          closed: $('#projectClosed').checked,
+          ...opening,
+          updated_at: new Date().toISOString(),
+        }
+      : {
+          id: $('#projectId').value,
+          party_id: customer.id,
+          project_number: $('#projectCode').value,
+          name: $('#projectName').value.trim(),
+          location: $('#projectLocation').value.trim() || null,
+          description: null,
+          contract_type: 'with_material',
+          original_contract_amount: 0,
+          status: openingStatus,
+          closed: $('#projectClosed').checked,
+          quote_date: today(),
+          pricing_mode: 'with_material',
+          payment_terms: null,
+          notes: null,
+          quote_created: false,
+          ...opening,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+  try {
+    await working(existing ? 'Updating project…' : 'Saving project…', e.submitter, async () => {
+      upsert(state.projects, await store.save('projects', row, Boolean(existing)));
+      closeSheets();
+      render();
+      toast(existing ? 'Project updated.' : 'Project added.');
+    });
+  } catch {}
+});
+$('#quoteForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const selected = project($('#quoteProjectId').value) || resolveProject($('#quoteProjectSearch').value);
+  if (!selected || selected.closed === true) {
+    toast('Select an active project from the suggestions.');
+    return;
+  }
+  const withMaterial = $('#quoteWithMaterial').value === '' ? null : Number($('#quoteWithMaterial').value),
+    withoutMaterial =
+      $('#quoteWithoutMaterial').value === '' ? null : Number($('#quoteWithoutMaterial').value);
+  if (!(withMaterial > 0) && !(withoutMaterial > 0)) {
+    toast('Enter at least one quotation amount.');
+    return;
+  }
+  const row = {
+      id: selected.id,
+      description: $('#quoteDetails').value.trim() || null,
+      quote_date: $('#quoteDate').value,
+      start_date: $('#quoteStart').value || null,
+      expected_end_date: $('#quoteEnd').value || null,
+      days_to_complete: $('#quoteDays').value === '' ? null : Number($('#quoteDays').value),
+      pricing_mode: $('#quoteShowBoth').checked
+        ? 'both'
+        : withMaterial > 0
+          ? 'with_material'
+          : 'without_material',
+      price_with_material: withMaterial,
+      price_without_material: withoutMaterial,
+      payment_terms: $('#quotePaymentTerms').value.trim() || null,
+      notes: $('#quoteNotes').value.trim() || null,
+      status: selected.status === 'Approved' ? 'Approved' : 'Pending',
+      quote_created: true,
+      updated_at: new Date().toISOString(),
+    },
+    download = e.submitter?.dataset.submitMode === 'download';
+  try {
+    await working(download ? 'Saving quote and preparing PDF…' : 'Saving quote…', e.submitter, async () => {
+      const saved = await store.save('projects', row, true);
+      upsert(state.projects, saved);
+      closeSheets();
+      render();
+      viewQuote(saved.id);
+      toast('Quote saved.');
+      if (download) await downloadCurrent($('[data-detail-download]'));
+    });
+  } catch {}
+});
+$('#approvalForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const row = project(state.detail?.id),
+    type = $('input[name="approvalType"]:checked')?.value;
+  if (!row || !type) return;
+  const amount = Number(type === 'with_material' ? row.price_with_material : row.price_without_material);
+  try {
+    await working('Approving quote and creating invoice…', e.submitter, async () => {
+      upsert(
+        state.projects,
+        await store.save(
+          'projects',
+          {
+            id: row.id,
+            status: 'Approved',
+            contract_type: type,
+            original_contract_amount: amount,
+            updated_at: new Date().toISOString(),
+          },
+          true,
+        ),
+      );
+      let invoice = state.invoices.find((x) => x.project_id === row.id);
+      if (!invoice) {
+        const numberedProjectInvoices = state.invoices.filter(
+          (x) => x.project_id && /^INV-\d+$/.test(String(x.invoice_number || '')),
+        );
+        invoice = await store.save(
+          'invoices',
+          {
+            id: uid(),
+            project_id: row.id,
+            walk_in_order_id: null,
+            invoice_number: nextSerial('INV', numberedProjectInvoices, 'invoice_number'),
+            invoice_date: today(),
+            due_date: null,
+            amount,
+            notes: null,
+            status: 'Draft',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          false,
+        );
+        upsert(state.invoices, invoice);
+      }
+      closeSheets();
+      render();
+      viewQuote(row.id);
+      toast('Quote approved and invoice created.');
+    });
+  } catch {}
+});
+$('#scopeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const row = {
+    id: uid(),
+    project_id: $('#scopeProject').value,
+    entry_type: $('#scopeType').value,
+    entry_date: $('#scopeDate').value,
+    description: $('#scopeDescription').value.trim() || 'Scope change',
+    amount: Number($('#scopeAmount').value),
+    notes: null,
+    created_at: new Date().toISOString(),
+  };
+  try {
+    await working('Updating invoice scope…', e.submitter, async () => {
+      upsert(state.entries, await store.save('project_entries', row));
+      closeSheets();
+      render();
+      const invoice = state.invoices.find((x) => x.project_id === row.project_id);
+      if (invoice) viewInvoice(invoice.id);
+      toast('Scope change saved. Invoice total updated.');
+    });
+  } catch {}
+});
+$('#receiptForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = state.payments.find((r) => r.id === $('#receiptId').value),
+    job = project(existing?.project_id || $('#receiptProject').value),
+    invoice = state.invoices.find((r) => r.project_id === job?.id);
+  if (!job) {
+    toast('Select a project.');
+    return;
+  }
+  const input = {
+    payment_date: $('#receiptDate').value,
+    to_account_id: $('#receiptAccount').value,
+    amount: Number($('#receiptAmount').value),
+    description: $('#receiptDetails').value.trim() || `Project receipt - ${job.name}`,
+    notes: null,
+  };
+  try {
+    await working(existing ? 'Updating payment…' : 'Saving payment…', e.submitter, async () => {
+      if (existing) {
+        if (cloud)
+          await store.rpc('update_project_receipt', {
+            p_payment_id: existing.id,
+            p_payment_date: input.payment_date,
+            p_to_account_id: input.to_account_id,
+            p_amount: input.amount,
+            p_description: input.description,
+            p_notes: null,
+          });
+        else {
+          Object.assign(existing, input);
+          const entry = state.entries.find((r) => r.payment_id === existing.id);
+          if (entry)
+            Object.assign(entry, {
+              entry_date: input.payment_date,
+              amount: input.amount,
+              description: input.description,
+            });
+        }
+      } else if (cloud)
+        await store.rpc('record_payment', {
+          p_business_id: state.businessId,
+          p_payment_type: 'customer_receipt',
+          p_payment_date: input.payment_date,
+          p_from_account_id: null,
+          p_to_account_id: input.to_account_id,
+          p_party_id: null,
+          p_supplier_id: null,
+          p_project_id: job.id,
+          p_walk_in_order_id: null,
+          p_purchase_bill_id: null,
+          p_invoice_id: invoice?.id || null,
+          p_description: input.description,
+          p_amount: input.amount,
+          p_reference: null,
+          p_notes: null,
+        });
+      else {
+        const payment = {
+          id: uid(),
+          payment_number: `RCP-${Date.now().toString().slice(-7)}`,
+          payment_type: 'customer_receipt',
+          party_id: job.party_id,
+          project_id: job.id,
+          invoice_id: invoice?.id || null,
+          created_by: 'demo',
+          created_at: new Date().toISOString(),
+          ...input,
+        };
+        state.payments.unshift(payment);
+        state.entries.unshift({
+          id: uid(),
+          project_id: job.id,
+          entry_type: 'receipt',
+          entry_date: input.payment_date,
+          description: input.description,
+          amount: input.amount,
+          notes: null,
+          payment_id: payment.id,
+          created_at: new Date().toISOString(),
+        });
+      }
+      if (cloud) await store.load();
+      store.persist();
+      closeSheets();
+      render();
+      toast(existing ? 'Payment updated.' : 'Payment received.');
+    });
+  } catch {}
+});
+$('#labourPersonForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = labourer($('#labourPersonId').value),
+    row = {
+      id: existing?.id || uid(),
+      name: $('#labourName').value.trim(),
+      daily_wage_rate: Number($('#labourDailyWage').value),
+      record_date: $('#labourRecordDate').value,
+      joining_date: $('#labourJoiningDate').value || null,
+      speciality: $('#labourSpeciality').value.trim() || null,
+      cnic: $('#labourCnic').value.trim() || null,
+      mobile: $('#labourMobile').value.trim() || null,
+      home_address: existing?.home_address || null,
+      active: true,
+      created_at: existing?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  try {
+    await working(existing ? 'Updating labour person…' : 'Saving labour person…', e.submitter, async () => {
+      upsert(state.labourers, await store.save('labourers', row, Boolean(existing)));
+      closeSheets();
+      render();
+      showLabourTab('persons');
+      toast(existing ? 'Labour person updated.' : 'Labour person added.');
+    });
+  } catch {}
+});
+$('#labourAssignmentForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const days = Number($('#labourDayType').value),
+    rate = Number($('#labourAssignmentRate').value),
+    row = {
+      id: uid(),
+      labourer_id: $('#labourAssignmentPerson').value,
+      project_id: $('#labourAssignmentProject').value,
+      walk_in_order_id: null,
+      assignment_date: $('#labourAssignmentDate').value,
+      days,
+      daily_rate: rate,
+      notes: $('#labourAssignmentDetails').value.trim() || null,
+      created_at: new Date().toISOString(),
+    };
+  try {
+    await working('Assigning labour…', e.submitter, async () => {
+      const saved = await store.save('labour_assignments', row);
+      if (cloud) await store.load();
+      else {
+        saved.amount = days * rate;
+        state.labourAssignments.unshift(saved);
+        state.entries.unshift({
+          id: uid(),
+          project_id: row.project_id,
+          entry_type: 'labour',
+          entry_date: row.assignment_date,
+          description: `Labour: ${labourer(row.labourer_id)?.name} (${days} day)`,
+          amount: days * rate,
+          notes: row.notes,
+          created_at: new Date().toISOString(),
+        });
+      }
+      store.persist();
+      closeSheets();
+      render();
+      showLabourTab('assignments');
+      toast('Labour assigned.');
+    });
+  } catch {}
+});
+$('#materialAssignmentForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const item = material($('#materialAssignmentMaterial').value),
+    projectId = $('#materialAssignmentProject').value,
+    mode = $('#materialAssignmentMode').value,
+    metric = materialMetrics(item),
+    entered = Number($('#materialAssignmentQuantity').value),
+    pool = isConsumable(item),
+    available = mode === 'return' ? projectReturnable(projectId, item.id) : metric.stock;
+  if (entered > available) {
+    toast(
+      `${mode === 'return' ? 'Only' : 'Available'} ${pool ? money(available) : `${qty(available)} ${item.unit}`} ${mode === 'return' ? 'can be returned.' : 'is available.'}`,
+    );
+    return;
+  }
+  const quantity = pool ? 1 : entered,
+    unitCost = pool ? entered : metric.unitCost,
+    row = {
+      id: uid(),
+      material_id: item.id,
+      project_id: projectId,
+      walk_in_order_id: null,
+      movement_type: mode === 'return' ? 'project_return' : 'project_issue',
+      movement_date: $('#materialAssignmentDate').value,
+      quantity,
+      unit_cost: unitCost,
+      supplier_name: null,
+      reference: null,
+      notes: $('#materialAssignmentDetails').value.trim() || null,
+      created_at: new Date().toISOString(),
+    };
+  try {
+    await working(
+      mode === 'return' ? 'Returning material…' : 'Assigning material…',
+      e.submitter,
+      async () => {
+        const saved = await store.save('material_movements', row);
+        if (cloud) await store.load();
+        else {
+          state.materialMovements.unshift(saved);
+          state.entries.unshift({
+            id: uid(),
+            project_id: row.project_id,
+            entry_type: mode === 'return' ? 'material_return' : 'material',
+            entry_date: row.movement_date,
+            description: `${mode === 'return' ? 'Material returned' : 'Material'}: ${item.name} (${pool ? money(entered) : `${qty(entered)} ${item.unit}`})`,
+            amount: entered * (pool ? 1 : metric.unitCost),
+            notes: row.notes,
+            created_at: new Date().toISOString(),
+          });
+        }
+        store.persist();
+        closeSheets();
+        render();
+        toast(mode === 'return' ? 'Material returned.' : 'Material assigned.');
+      },
+    );
+  } catch {}
+});
+$('#expenseCategoryForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = expenseCategory($('#expenseCategoryId').value),
+    row = {
+      id: existing?.id || uid(),
+      name: $('#expenseCategoryName').value.trim(),
+      description: $('#expenseCategoryDetails').value.trim() || null,
+      active: true,
+      created_at: existing?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  try {
+    await working(existing ? 'Updating expense…' : 'Saving expense…', e.submitter, async () => {
+      upsert(state.expenseCategories, await store.save('expense_categories', row, Boolean(existing)));
+      closeSheets();
+      render();
+      showExpenseTab('list');
+      toast(existing ? 'Expense updated.' : 'Expense added.');
+    });
+  } catch {}
+});
+$('#expenseChargeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const cat = expenseCategory($('#expenseChargeCategory').value),
+    row = {
+      id: uid(),
+      project_id: $('#expenseChargeProject').value,
+      entry_type: 'expense',
+      entry_date: $('#expenseChargeDate').value,
+      description: cat.name,
+      amount: Number($('#expenseChargeAmount').value),
+      notes: $('#expenseChargeDetails').value.trim() || null,
+      expense_category_id: cat.id,
+      created_at: new Date().toISOString(),
+    };
+  try {
+    await working('Charging project expense…', e.submitter, async () => {
+      upsert(state.entries, await store.save('project_entries', row));
+      closeSheets();
+      render();
+      showExpenseTab('charges');
+      toast('Expense charged to project.');
+    });
+  } catch {}
+});
+$('#orderInvoiceForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = walkInOrder($('#orderInvoiceOrderId').value),
+    items = readOrderInvoiceLines(),
+    discount = Number($('#orderInvoiceDiscount').value || 0),
+    subtotal = items.reduce((sum, line) => sum + line.quantity * line.rate, 0),
+    total = subtotal - discount;
+  if (items.some((line) => !line.order_item_id || !(line.quantity > 0) || line.rate < 0)) {
+    toast('Complete every invoice item, quantity and rate.');
+    return;
+  }
+  if (discount < 0 || discount > subtotal || total <= 0) {
+    toast('Discount must be between zero and the subtotal.');
+    return;
+  }
+  const payload = {
+    p_invoice_date: $('#orderInvoiceDate').value,
+    p_customer_name: $('#orderInvoiceCustomer').value.trim(),
+    p_customer_phone: $('#orderInvoiceMobile').value.trim() || null,
+    p_details: null,
+    p_discount: discount,
+    p_items: items,
+  };
+  try {
+    await working(existing ? 'Updating order invoice…' : 'Saving order invoice…', e.submitter, async () => {
+      let orderId = existing?.id;
+      if (cloud) {
+        orderId = existing
+          ? await store.rpc('update_order_invoice', { p_order_id: existing.id, ...payload })
+          : await store.rpc('create_order_invoice', { p_business_id: state.businessId, ...payload });
+        await store.load();
+      } else if (existing) {
+        Object.assign(existing, {
+          customer_name: payload.p_customer_name,
+          customer_phone: payload.p_customer_phone,
+          description: 'Order invoice items',
+          order_date: payload.p_invoice_date,
+          subtotal,
+          discount,
+          amount: total,
+        });
+        Object.assign(orderInvoice(existing), { invoice_date: payload.p_invoice_date, amount: total });
+        state.orderInvoiceItems = state.orderInvoiceItems.filter(
+          (line) => line.walk_in_order_id !== existing.id,
+        );
+        items.forEach((line, index) =>
+          state.orderInvoiceItems.push({
+            id: uid(),
+            walk_in_order_id: existing.id,
+            item_name: state.orderItems.find((item) => item.id === line.order_item_id)?.name,
+            sort_order: index + 1,
+            amount: line.quantity * line.rate,
+            ...line,
+          }),
+        );
+      } else {
+        orderId = uid();
+        const order = {
+          id: orderId,
+          order_number: nextSerial('ORD', state.walkInOrders, 'order_number'),
+          customer_name: payload.p_customer_name,
+          customer_phone: payload.p_customer_phone,
+          title: 'Order invoice',
+          description: 'Order invoice items',
+          order_date: payload.p_invoice_date,
+          amount: total,
+          subtotal,
+          discount,
+          status: 'Pending',
+          created_at: new Date().toISOString(),
+        };
+        state.walkInOrders.unshift(order);
+        state.invoices.unshift({
+          id: uid(),
+          walk_in_order_id: orderId,
+          project_id: null,
+          invoice_number: nextSerial(
+            'OIN',
+            state.invoices.filter((row) => row.walk_in_order_id),
+            'invoice_number',
+          ),
+          invoice_date: payload.p_invoice_date,
+          amount: total,
+          status: 'Draft',
+        });
+        items.forEach((line, index) =>
+          state.orderInvoiceItems.push({
+            id: uid(),
+            walk_in_order_id: orderId,
+            item_name: state.orderItems.find((item) => item.id === line.order_item_id)?.name,
+            sort_order: index + 1,
+            amount: line.quantity * line.rate,
+            ...line,
+          }),
+        );
+      }
+      store.persist();
+      closeSheets();
+      render();
+      viewOrderInvoice(orderId);
+      toast(existing ? 'Order invoice updated.' : 'Order invoice saved.');
+    });
+  } catch {}
+});
+$('#orderReceiptForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = state.payments.find((r) => r.id === $('#orderReceiptId').value),
+    order = walkInOrder(existing?.walk_in_order_id || $('#orderReceiptOrder').value);
+  if (!order) {
+    toast('Select an order.');
+    return;
+  }
+  const input = {
+    payment_date: $('#orderReceiptDate').value,
+    to_account_id: $('#orderReceiptAccount').value,
+    amount: Number($('#orderReceiptAmount').value),
+    description: $('#orderReceiptDetails').value.trim() || `Order receipt - ${order.order_number}`,
+  };
+  try {
+    await working(existing ? 'Updating order receipt…' : 'Saving order receipt…', e.submitter, async () => {
+      if (existing) {
+        if (cloud)
+          await store.rpc('update_order_receipt', {
+            p_payment_id: existing.id,
+            p_payment_date: input.payment_date,
+            p_to_account_id: input.to_account_id,
+            p_amount: input.amount,
+            p_description: input.description,
+            p_notes: null,
+          });
+        else {
+          Object.assign(existing, input);
+          const entry = state.walkInEntries.find((r) => r.payment_id === existing.id);
+          if (entry)
+            Object.assign(entry, {
+              entry_date: input.payment_date,
+              amount: input.amount,
+              description: input.description,
+            });
+        }
+      } else if (cloud)
+        await store.rpc('record_payment', {
+          p_business_id: state.businessId,
+          p_payment_type: 'customer_receipt',
+          p_payment_date: input.payment_date,
+          p_from_account_id: null,
+          p_to_account_id: input.to_account_id,
+          p_party_id: null,
+          p_supplier_id: null,
+          p_project_id: null,
+          p_walk_in_order_id: order.id,
+          p_purchase_bill_id: null,
+          p_invoice_id: null,
+          p_description: input.description,
+          p_amount: input.amount,
+          p_reference: null,
+          p_notes: null,
+        });
+      else {
+        const payment = {
+          id: uid(),
+          payment_number: `MIT-${Date.now().toString().slice(-7)}`,
+          payment_type: 'customer_receipt',
+          walk_in_order_id: order.id,
+          created_by: 'demo',
+          created_at: new Date().toISOString(),
+          ...input,
+        };
+        state.payments.unshift(payment);
+        state.walkInEntries.unshift({
+          id: uid(),
+          walk_in_order_id: order.id,
+          entry_type: 'receipt',
+          entry_date: input.payment_date,
+          description: input.description,
+          amount: input.amount,
+          payment_id: payment.id,
+          created_at: new Date().toISOString(),
+        });
+      }
+      if (cloud) await store.load();
+      store.persist();
+      closeSheets();
+      render();
+      toast(existing ? 'Order receipt updated.' : 'Order payment received.');
+    });
+  } catch {}
+});
+$('#orderExpenseChargeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const cat = expenseCategory($('#orderExpenseCategory').value),
+    row = {
+      id: uid(),
+      walk_in_order_id: $('#orderExpenseOrder').value,
+      entry_type: 'expense',
+      entry_date: $('#orderExpenseDate').value,
+      description: cat.name,
+      amount: Number($('#orderExpenseAmount').value),
+      notes: $('#orderExpenseDetails').value.trim() || null,
+      expense_category_id: cat.id,
+      created_at: new Date().toISOString(),
+    };
+  try {
+    await working('Assigning order expense…', e.submitter, async () => {
+      upsert(state.walkInEntries, await store.save('walk_in_order_entries', row));
+      closeSheets();
+      render();
+      showOrderExpenseTab('charges');
+      toast('Expense assigned to order.');
+    });
+  } catch {}
+});
+$('#orderMaterialForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const item = material($('#orderMaterialItem').value),
+    orderId = $('#orderMaterialOrder').value,
+    mode = $('#orderMaterialMode').value,
+    metric = materialMetrics(item),
+    entered = Number($('#orderMaterialQuantity').value),
+    pool = isConsumable(item),
+    available = mode === 'return' ? orderReturnable(orderId, item.id) : metric.stock;
+  if (entered > available) {
+    toast(
+      `${mode === 'return' ? 'Only' : 'Available'} ${pool ? money(available) : `${qty(available)} ${item.unit}`} ${mode === 'return' ? 'can be returned.' : 'is available.'}`,
+    );
+    return;
+  }
+  const quantity = pool ? 1 : entered,
+    unitCost = pool ? entered : metric.unitCost,
+    row = {
+      id: uid(),
+      material_id: item.id,
+      project_id: null,
+      walk_in_order_id: orderId,
+      movement_type: mode === 'return' ? 'walk_in_return' : 'walk_in_issue',
+      movement_date: $('#orderMaterialDate').value,
+      quantity,
+      unit_cost: unitCost,
+      supplier_name: null,
+      reference: null,
+      notes: $('#orderMaterialDetails').value.trim() || null,
+      created_at: new Date().toISOString(),
+    };
+  try {
+    await working(
+      mode === 'return' ? 'Returning material…' : 'Assigning material…',
+      e.submitter,
+      async () => {
+        const saved = await store.save('material_movements', row);
+        if (cloud) await store.load();
+        else {
+          state.materialMovements.unshift(saved);
+          state.walkInEntries.unshift({
+            id: uid(),
+            walk_in_order_id: orderId,
+            entry_type: mode === 'return' ? 'material_return' : 'material',
+            entry_date: row.movement_date,
+            description: `${mode === 'return' ? 'Material returned' : 'Material'}: ${item.name}`,
+            amount: entered * (pool ? 1 : metric.unitCost),
+            notes: row.notes,
+          });
+        }
+        store.persist();
+        closeSheets();
+        render();
+        toast(mode === 'return' ? 'Material returned.' : 'Material assigned to order.');
+      },
+    );
+  } catch {}
+});
+$('#orderLabourForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const days = Number($('#orderLabourDay').value),
+    rate = Number($('#orderLabourRate').value),
+    row = {
+      id: uid(),
+      labourer_id: $('#orderLabourPerson').value,
+      project_id: null,
+      walk_in_order_id: $('#orderLabourOrder').value,
+      assignment_date: $('#orderLabourDate').value,
+      days,
+      daily_rate: rate,
+      notes: $('#orderLabourDetails').value.trim() || null,
+      created_at: new Date().toISOString(),
+    };
+  try {
+    await working('Assigning order labour…', e.submitter, async () => {
+      const saved = await store.save('labour_assignments', row);
+      if (cloud) await store.load();
+      else {
+        saved.amount = days * rate;
+        state.labourAssignments.unshift(saved);
+        state.walkInEntries.unshift({
+          id: uid(),
+          walk_in_order_id: row.walk_in_order_id,
+          entry_type: 'labour',
+          entry_date: row.assignment_date,
+          description: `Labour: ${labourer(row.labourer_id)?.name}`,
+          amount: days * rate,
+          notes: row.notes,
+        });
+      }
+      store.persist();
+      closeSheets();
+      render();
+      showOrderLabourTab('assignments');
+      toast('Labour assigned to order.');
+    });
+  } catch {}
+});
+$('#orderItemForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = state.orderItems.find((r) => r.id === $('#orderItemId').value),
+    row = {
+      id: existing?.id || uid(),
+      name: $('#orderItemName').value.trim(),
+      details: $('#orderItemDetails').value.trim() || null,
+      active: true,
+      created_at: existing?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  try {
+    await working(existing ? 'Updating item…' : 'Saving item…', e.submitter, async () => {
+      upsert(state.orderItems, await store.save('order_items', row, Boolean(existing)));
+      closeSheets();
+      render();
+      toast(existing ? 'Item updated.' : 'Invoice item added.');
+    });
+  } catch {}
+});
+$('#supplierForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = supplier($('#supplierId').value),
+    row = {
+      id: existing?.id || uid(),
+      name: $('#supplierName').value.trim(),
+      opening_amount:
+        existing && $('#supplierOpeningAmount').disabled
+          ? Number(existing.opening_amount || 0)
+          : Number($('#supplierOpeningAmount').value || 0),
+      phone: $('#supplierMobile').value.trim() || null,
+      company_name: $('#supplierCompany').value.trim() || null,
+      contact_name: existing?.contact_name || null,
+      address: $('#supplierAddress').value.trim() || null,
+      notes: $('#supplierDetails').value.trim() || null,
+      active: true,
+      created_at: existing?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  try {
+    await working(existing ? 'Updating supplier…' : 'Saving supplier…', e.submitter, async () => {
+      upsert(state.suppliers, await store.save('suppliers', row, Boolean(existing)));
+      closeSheets();
+      render();
+      toast(existing ? 'Supplier updated.' : 'Supplier added.');
+    });
+  } catch {}
+});
+$('#purchaseMaterialForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = material($('#purchaseMaterialId').value),
+    tracking = $('#purchaseMaterialTracking').value,
+    row = {
+      id: existing?.id || $('#purchaseMaterialId').value,
+      name: $('#purchaseMaterialName').value.trim(),
+      sku: $('#purchaseMaterialCode').value,
+      tracking_type: tracking,
+      unit: tracking === 'consumable' ? 'piece' : $('#purchaseMaterialUnit').value,
+      opening_quantity: tracking === 'stock' ? Number($('#purchaseMaterialOpeningQty').value || 0) : 0,
+      opening_amount: tracking === 'consumable' ? Number($('#purchaseMaterialOpeningAmount').value || 0) : 0,
+      details: $('#purchaseMaterialDetails').value.trim() || null,
+      category: existing?.category || null,
+      reorder_level: Number(existing?.reorder_level || 0),
+      default_unit_cost: Number(existing?.default_unit_cost || 0),
+      active: true,
+      created_at: existing?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  try {
+    await working(existing ? 'Updating material…' : 'Saving material…', e.submitter, async () => {
+      upsert(state.materials, await store.save('materials', row, Boolean(existing)));
+      closeSheets();
+      render();
+      toast(existing ? 'Material updated.' : 'Material added.');
+    });
+  } catch {}
+});
+$('#purchaseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const mode = $('#purchaseMode').value,
+    items = readPurchaseLines(),
+    discount = Number($('#purchaseDiscount').value || 0),
+    subtotal = items.reduce((sum, line) => sum + lineAmount(line.quantity, line.unit_cost), 0),
+    total = subtotal - discount;
+  if (items.some((line) => !line.material_id || !(line.quantity > 0) || !(line.unit_cost > 0))) {
+    toast('Complete every material and amount.');
+    return;
+  }
+  if (discount < 0 || discount > subtotal || total <= 0) {
+    toast('Discount must be between zero and the subtotal.');
+    return;
+  }
+  const supplierId =
+      mode === 'cash'
+        ? state.suppliers.find((r) => r.name === 'Cash Purchase Supplier')?.id
+        : $('#purchaseSupplier').value,
+    payload = {
+      p_supplier_id: supplierId,
+      p_bill_date: $('#purchaseDate').value,
+      p_notes: $('#purchaseDetails').value.trim() || null,
+      p_discount: discount,
+      p_items: items,
+    };
+  if (mode === 'cash' && !$('#cashPurchaseAccount').value) {
+    toast('Select the cash or bank account paying this purchase.');
+    return;
+  }
+  try {
+    await working(
+      mode === 'cash' ? 'Saving and paying cash purchase…' : 'Saving purchase and updating materials…',
+      e.submitter,
+      async () => {
+        let billId;
+        if (cloud) {
+          if (mode === 'cash')
+            billId = await store.rpc('create_cash_purchase_mobile', {
+              p_bill_date: payload.p_bill_date,
+              p_notes: payload.p_notes,
+              p_discount: discount,
+              p_items: items,
+              p_from_account_id: $('#cashPurchaseAccount').value,
+            });
+          else billId = await store.rpc('create_purchase_bill_mobile', payload);
+          await store.load();
+        } else {
+          billId = uid();
+          const vendor = supplier(supplierId) || { id: supplierId, name: 'Cash Purchase Supplier' },
+            bill = {
+              id: billId,
+              business_id: state.businessId,
+              supplier_id: supplierId,
+              bill_number: `MIPB-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+              bill_date: payload.p_bill_date,
+              subtotal,
+              discount,
+              total_amount: total,
+              amount_paid: mode === 'cash' ? total : 0,
+              payment_status: mode === 'cash' ? 'Paid' : 'Unpaid',
+              status: 'Posted',
+              notes: payload.p_notes,
+              created_at: new Date().toISOString(),
+            };
+          state.purchaseBills.unshift(bill);
+          items.forEach((line) => {
+            const itemRow = {
+              id: uid(),
+              business_id: state.businessId,
+              purchase_bill_id: billId,
+              line_total: lineAmount(line.quantity, line.unit_cost),
+              created_at: new Date().toISOString(),
+              ...line,
+            };
+            state.purchaseBillItems.push(itemRow);
+            state.materialMovements.unshift({
+              id: uid(),
+              business_id: state.businessId,
+              material_id: line.material_id,
+              movement_type: 'purchase',
+              movement_date: payload.p_bill_date,
+              quantity: line.quantity,
+              unit_cost: line.unit_cost,
+              supplier_id: vendor.id,
+              supplier_name: vendor.name,
+              reference: bill.bill_number,
+              notes: line.details,
+              purchase_bill_id: billId,
+              purchase_bill_item_id: itemRow.id,
+              created_at: new Date().toISOString(),
+            });
+          });
+          if (mode === 'cash')
+            state.payments.unshift({
+              id: uid(),
+              business_id: state.businessId,
+              payment_number: `MIT-${Date.now().toString().slice(-7)}`,
+              payment_type: 'supplier_payment',
+              payment_date: payload.p_bill_date,
+              from_account_id: $('#cashPurchaseAccount').value,
+              supplier_id: supplierId,
+              purchase_bill_id: billId,
+              description: `Cash purchase - ${bill.bill_number}`,
+              amount: total,
+              created_at: new Date().toISOString(),
+            });
+        }
+        store.persist();
+        closeSheets();
+        render();
+        viewPurchase(billId);
+        toast(mode === 'cash' ? 'Cash purchase saved and paid.' : 'Purchase saved and materials updated.');
+      },
+    );
+  } catch {}
+});
+$('#purchasePaymentForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const supplierId = $('#purchasePaymentSupplier').value,
+    amount = Number($('#purchasePaymentAmount').value),
+    vendor = supplier(supplierId);
+  if (!vendor) {
+    toast('Select a supplier.');
+    return;
+  }
+  const payload = {
+    p_business_id: state.businessId,
+    p_supplier_id: supplierId,
+    p_payment_date: $('#purchasePaymentDate').value,
+    p_from_account_id: $('#purchasePaymentAccount').value,
+    p_amount: amount,
+    p_description: $('#purchasePaymentDetails').value.trim() || `Supplier payment - ${vendor.name}`,
+  };
+  try {
+    await working('Saving supplier payment…', e.submitter, async () => {
+      if (cloud) {
+        await store.rpc('record_supplier_payment', payload);
+        await store.load();
+      } else {
+        state.payments.unshift({
+          id: uid(),
+          payment_number: `MIT-${Date.now().toString().slice(-7)}`,
+          payment_type: 'supplier_payment',
+          payment_date: payload.p_payment_date,
+          from_account_id: payload.p_from_account_id,
+          to_account_id: null,
+          supplier_id: supplierId,
+          purchase_bill_id: null,
+          description: payload.p_description,
+          amount,
+          created_at: new Date().toISOString(),
+        });
+        let remaining = amount,
+          openingApply = Math.min(remaining, supplierOpeningDue(supplierId));
+        vendor.opening_amount_paid = Number(vendor.opening_amount_paid || 0) + openingApply;
+        remaining -= openingApply;
+        const bills = state.purchaseBills
+          .filter((row) => row.supplier_id === supplierId && row.status === 'Posted')
+          .sort((a, b) =>
+            `${a.bill_date}${a.created_at || ''}`.localeCompare(`${b.bill_date}${b.created_at || ''}`),
+          );
+        for (const bill of bills) {
+          if (remaining <= 0) break;
+          const applied = Math.min(remaining, Math.max(0, purchaseBalance(bill)));
+          bill.amount_paid = Number(bill.amount_paid || 0) + applied;
+          remaining -= applied;
+          bill.payment_status = bill.amount_paid >= Number(bill.total_amount) ? 'Paid' : 'Partly Paid';
+        }
+        if (remaining > 0 && bills.length) {
+          const bill = bills[bills.length - 1];
+          bill.amount_paid = Number(bill.amount_paid || 0) + remaining;
+          bill.payment_status = 'Paid';
+        }
+      }
+      store.persist();
+      closeSheets();
+      render();
+      toast('Supplier payment saved.');
+    });
+  } catch {}
+});
+
+$('#bankAccountForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = account($('#bankAccountId').value),
+    row = {
+      id: existing?.id || uid(),
+      name: $('#bankAccountName').value.trim(),
+      account_type: existing?.account_type || 'Bank',
+      bank_name: existing?.account_type === 'Cash' ? null : $('#bankAccountBank').value.trim(),
+      account_number: existing?.account_type === 'Cash' ? null : $('#bankAccountNumber').value.trim() || null,
+      opening_balance:
+        existing && accountHasActivity(existing.id)
+          ? Number(existing.opening_balance || 0)
+          : Number($('#bankAccountOpening').value),
+      active: true,
+      created_at: existing?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  try {
+    await working(existing ? 'Updating account…' : 'Saving bank account…', e.submitter, async () => {
+      upsert(state.paymentAccounts, await store.save('payment_accounts', row, Boolean(existing)));
+      closeSheets();
+      render();
+      toast(existing ? 'Account updated.' : 'Bank account added.');
+    });
+  } catch {}
+});
+$('#bankTransferForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const mode = $('#bankTransferMode').value,
+    from = account($('#bankTransferFrom').value),
+    to = account($('#bankTransferTo').value),
+    amount = Number($('#bankTransferAmount').value);
+  if (!from || !to) {
+    toast('Select both transfer accounts.');
+    return;
+  }
+  if (from.id === to.id) {
+    toast('Source and destination accounts must be different.');
+    return;
+  }
+  const valid =
+    mode === 'withdraw'
+      ? from.account_type === 'Bank' && to.account_type === 'Cash'
+      : mode === 'deposit'
+        ? from.account_type === 'Cash' && to.account_type === 'Bank'
+        : from.account_type === 'Bank' && to.account_type === 'Bank';
+  if (!valid) {
+    toast('The selected accounts do not match this transfer type.');
+    return;
+  }
+  if (amount > accountBalance(from.id)) {
+    toast(`Only ${money(accountBalance(from.id))} is available in ${from.name}.`);
+    return;
+  }
+  const payload = {
+    p_business_id: state.businessId,
+    p_payment_type: 'transfer',
+    p_payment_date: $('#bankTransferDate').value,
+    p_from_account_id: from.id,
+    p_to_account_id: to.id,
+    p_party_id: null,
+    p_supplier_id: null,
+    p_project_id: null,
+    p_walk_in_order_id: null,
+    p_purchase_bill_id: null,
+    p_invoice_id: null,
+    p_description: $('#bankTransferDetails').value.trim(),
+    p_amount: amount,
+    p_reference: null,
+    p_notes: null,
+  };
+  try {
+    await working('Saving money transfer…', e.submitter, async () => {
+      if (cloud) {
+        await store.rpc('record_payment', payload);
+        await store.load();
+      } else
+        state.payments.unshift({
+          id: uid(),
+          business_id: state.businessId,
+          payment_number: `MIT-${Date.now().toString().slice(-7)}`,
+          payment_type: 'transfer',
+          payment_date: payload.p_payment_date,
+          from_account_id: from.id,
+          to_account_id: to.id,
+          description: payload.p_description,
+          amount,
+          created_at: new Date().toISOString(),
+        });
+      store.persist();
+      closeSheets();
+      render();
+      toast(
+        mode === 'withdraw'
+          ? 'Cash withdrawal saved.'
+          : mode === 'deposit'
+            ? 'Cash deposit saved.'
+            : 'Bank transfer saved.',
+      );
+    });
+  } catch {}
+});
+$('#bankingExpenseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const cat = expenseCategory($('#bankingExpenseCategory').value),
+    from = account($('#bankingExpenseAccount').value),
+    amount = Number($('#bankingExpenseAmount').value);
+  if (!cat || !from) {
+    toast('Select an expense and payment account.');
+    return;
+  }
+  if (amount > accountBalance(from.id)) {
+    toast(`Only ${money(accountBalance(from.id))} is available in ${from.name}.`);
+    return;
+  }
+  const payload = {
+    p_business_id: state.businessId,
+    p_payment_type: 'expense',
+    p_payment_date: $('#bankingExpenseDate').value,
+    p_from_account_id: from.id,
+    p_to_account_id: null,
+    p_party_id: null,
+    p_supplier_id: null,
+    p_project_id: null,
+    p_walk_in_order_id: null,
+    p_purchase_bill_id: null,
+    p_invoice_id: null,
+    p_description: cat.name,
+    p_amount: amount,
+    p_reference: cat.id,
+    p_notes: $('#bankingExpenseDetails').value.trim() || null,
+  };
+  try {
+    await working('Charging business expense…', e.submitter, async () => {
+      if (cloud) {
+        await store.rpc('record_payment', payload);
+        await store.load();
+      } else
+        state.payments.unshift({
+          id: uid(),
+          business_id: state.businessId,
+          payment_number: `MIT-${Date.now().toString().slice(-7)}`,
+          payment_type: 'expense',
+          payment_date: payload.p_payment_date,
+          from_account_id: from.id,
+          to_account_id: null,
+          expense_category_id: cat.id,
+          description: cat.name,
+          reference: cat.id,
+          notes: payload.p_notes,
+          amount,
+          created_at: new Date().toISOString(),
+        });
+      store.persist();
+      closeSheets();
+      render();
+      showBankingExpenseTab('charges');
+      toast('Business expense charged.');
+    });
+  } catch {}
+});
+
+$('#payAdvanceForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const existing = state.payments.find((row) => row.id === $('#payAdvanceId').value),
+    payload = {
+      p_business_id: state.businessId,
+      p_labourer_id: existing?.labourer_id || $('#payAdvanceLabourer').value,
+      p_payment_date: $('#payAdvanceDate').value,
+      p_from_account_id: $('#payAdvanceAccount').value,
+      p_amount: Number($('#payAdvanceAmount').value),
+      p_description: $('#payAdvanceDetails').value.trim() || 'Labour advance',
+    };
+  try {
+    await working(existing ? 'Updating labour advance…' : 'Paying labour advance…', e.submitter, async () => {
+      if (cloud) {
+        if (existing)
+          await store.rpc('update_labour_advance', {
+            p_payment_id: existing.id,
+            p_payment_date: payload.p_payment_date,
+            p_from_account_id: payload.p_from_account_id,
+            p_amount: payload.p_amount,
+            p_description: payload.p_description,
+          });
+        else await store.rpc('record_labour_advance', payload);
+        await store.load();
+      } else if (existing)
+        Object.assign(existing, {
+          payment_date: payload.p_payment_date,
+          from_account_id: payload.p_from_account_id,
+          amount: payload.p_amount,
+          description: payload.p_description,
+        });
+      else
+        state.payments.unshift({
+          id: uid(),
+          business_id: state.businessId,
+          payment_number: `MIT-${Date.now().toString().slice(-7)}`,
+          payment_type: 'labour_advance',
+          payment_date: payload.p_payment_date,
+          from_account_id: payload.p_from_account_id,
+          labourer_id: payload.p_labourer_id,
+          description: payload.p_description,
+          amount: payload.p_amount,
+          created_at: new Date().toISOString(),
+        });
+      store.persist();
+      closeSheets();
+      render();
+      toast(existing ? 'Labour advance updated.' : 'Labour advance paid.');
+    });
+  } catch {}
+});
+$('#payWagesForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const labourerId = $('#payWagesLabourer').value,
+    assignments = unpaidAssignments(labourerId),
+    due = labourUnpaidTotal(labourerId),
+    amount = Number($('#payWagesAmount').value),
+    advance = Math.min(amount, labourAdvanceAvailable(labourerId)),
+    cash = Math.max(0, amount - advance),
+    accountId = $('#payWagesAccount').value || null;
+  if (!assignments.length) {
+    toast('There are no unpaid assignments for this labour person.');
+    return;
+  }
+  if (!(amount > 0) || amount > due + 0.005) {
+    toast(`Enter an amount up to ${money(due)}.`);
+    return;
+  }
+  if (cash > 0 && !accountId) {
+    toast('Select the account paying the remaining wages.');
+    return;
+  }
+  const payload = {
+    p_business_id: state.businessId,
+    p_labourer_id: labourerId,
+    p_settlement_date: $('#payWagesDate').value,
+    p_from_account_id: accountId,
+    p_notes: $('#payWagesDetails').value.trim() || null,
+    p_assignment_ids: assignments.map((row) => row.id),
+    p_amount: amount,
+  };
+  try {
+    await working('Saving wage payment…', e.submitter, async () => {
+      if (cloud) {
+        await store.rpc('settle_labour_wages', payload);
+        await store.load();
+      } else {
+        const settlementId = uid(),
+          paymentId = cash > 0 ? uid() : null;
+        state.labourWageSettlements.unshift({
+          id: settlementId,
+          business_id: state.businessId,
+          labourer_id: labourerId,
+          settlement_date: payload.p_settlement_date,
+          gross_wages: amount,
+          advance_applied: advance,
+          cash_paid: cash,
+          payment_id: paymentId,
+          notes: payload.p_notes,
+          created_at: new Date().toISOString(),
+        });
+        let remaining = amount;
+        for (const row of assignments) {
+          if (remaining <= 0.005) break;
+          const applied = Math.min(remaining, assignmentOutstanding(row));
+          state.labourWageSettlementItems.unshift({
+            id: uid(),
+            business_id: state.businessId,
+            settlement_id: settlementId,
+            labour_assignment_id: row.id,
+            amount: applied,
+            created_at: new Date().toISOString(),
+          });
+          remaining -= applied;
+        }
+        if (paymentId)
+          state.payments.unshift({
+            id: paymentId,
+            business_id: state.businessId,
+            payment_number: `MIT-${Date.now().toString().slice(-7)}`,
+            payment_type: 'labour_payment',
+            payment_date: payload.p_settlement_date,
+            from_account_id: accountId,
+            labourer_id: labourerId,
+            description: payload.p_notes || 'Labour wage payment',
+            amount: cash,
+            created_at: new Date().toISOString(),
+          });
+      }
+      store.persist();
+      closeSheets();
+      render();
+      toast('Wage payment saved.');
+    });
+  } catch {}
+});
+$('#disclaimerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const value = $('#disclaimerText').value.trim();
+  if (!value) {
+    toast('Enter disclaimer text.');
+    return;
+  }
+  const details = {
+    document_disclaimer: value,
+    document_proprietor: $('#printProprietor').value.trim() || null,
+    document_address: $('#printAddress').value.trim() || null,
+    document_whatsapp: $('#printWhatsapp').value.trim() || null,
+    partner_name: $('#printPartnerName').value.trim() || null,
+  };
+  try {
+    await working('Saving print details…', e.submitter, async () => {
+      state.business = await store.updateBusiness(details);
+      store.persist();
+      closeSheets();
+      render();
+      const detail = state.detail;
+      if (detail?.type === 'quote') viewQuote(detail.id);
+      else if (detail?.type === 'invoice') viewInvoice(detail.id);
+      else if (detail?.type === 'orderInvoice') viewOrderInvoice(detail.id);
+      toast('Print details updated.');
+    });
+  } catch {}
+});
+
+async function deleteDetail(button) {
+  const { type, id } = state.detail || {};
+  if (!type) return;
+  const messages = {
+    party: 'Delete this party? This cannot be undone.',
+    project: 'Delete this project? This cannot be undone.',
+    quote: 'Delete this quote? The project record will remain.',
+    invoice: 'Delete this invoice? The quote will return to Pending.',
+    receipt: 'Delete this received payment? Its project receipt entry will also be removed.',
+    labourPerson: 'Delete this labour person? This cannot be undone.',
+    expenseCategory: 'Delete this expense type? This cannot be undone.',
+    orderInvoice:
+      'Delete this order invoice? This is only allowed before receipts, expenses, material or labour are recorded.',
+    orderReceipt: 'Delete this received payment? Its order receipt entry will also be removed.',
+    orderItem: 'Delete this invoice item? Existing saved invoices will keep their item details.',
+    supplier: 'Delete this supplier? This is only allowed before purchases are recorded.',
+    purchaseMaterial:
+      'Delete this material? This is only allowed before purchases or assignments are recorded.',
+  };
+  if (!confirm(messages[type] || 'Delete this record? This cannot be undone.')) return;
+  try {
+    await working(`Deleting ${type}…`, button, async () => {
+      if (type === 'party') {
+        await store.remove('parties', id);
+        state.parties = state.parties.filter((r) => r.id !== id);
+      }
+      if (type === 'project') {
+        const row = project(id);
+        if (
+          row.quote_created ||
+          state.entries.some((e) => e.project_id === id) ||
+          state.invoices.some((i) => i.project_id === id)
+        )
+          throw new Error('Delete its quote, invoice and project activity before deleting this project.');
+        await store.remove('projects', id);
+        state.projects = state.projects.filter((r) => r.id !== id);
+      }
+      if (type === 'quote') {
+        const row = project(id);
+        if (row.status === 'Approved')
+          throw new Error('Delete the invoice first before deleting an approved quote.');
+        upsert(
+          state.projects,
+          await store.save(
+            'projects',
+            {
+              id,
+              description: null,
+              start_date: null,
+              expected_end_date: null,
+              days_to_complete: null,
+              price_with_material: null,
+              price_without_material: null,
+              payment_terms: null,
+              notes: null,
+              pricing_mode: 'with_material',
+              quote_created: false,
+              status: 'Pending',
+              updated_at: new Date().toISOString(),
+            },
+            true,
+          ),
+        );
+      }
+      if (type === 'invoice') {
+        const invoice = state.invoices.find((r) => r.id === id);
+        await store.remove('invoices', id);
+        state.invoices = state.invoices.filter((r) => r.id !== id);
+        const job = project(invoice.project_id);
+        if (job)
+          upsert(
+            state.projects,
+            await store.save(
+              'projects',
+              {
+                id: job.id,
+                status: 'Pending',
+                original_contract_amount: 0,
+                updated_at: new Date().toISOString(),
+              },
+              true,
+            ),
+          );
+      }
+      if (type === 'receipt') {
+        if (cloud) await store.rpc('delete_project_receipt', { p_payment_id: id });
+        state.payments = state.payments.filter((r) => r.id !== id);
+        state.entries = state.entries.filter((r) => r.payment_id !== id);
+      }
+      if (type === 'labourPerson') {
+        await store.remove('labourers', id);
+        state.labourers = state.labourers.filter((r) => r.id !== id);
+      }
+      if (type === 'expenseCategory') {
+        await store.remove('expense_categories', id);
+        state.expenseCategories = state.expenseCategories.filter((r) => r.id !== id);
+      }
+      if (type === 'orderInvoice') {
+        if (cloud) await store.rpc('delete_order_invoice', { p_order_id: id });
+        else {
+          const hasActivity =
+            state.walkInEntries.some((r) => r.walk_in_order_id === id) ||
+            state.materialMovements.some((r) => r.walk_in_order_id === id) ||
+            state.labourAssignments.some((r) => r.walk_in_order_id === id);
+          if (hasActivity) throw new Error('Delete order activity before deleting this invoice.');
+          state.walkInOrders = state.walkInOrders.filter((r) => r.id !== id);
+          state.invoices = state.invoices.filter((r) => r.walk_in_order_id !== id);
+          state.orderInvoiceItems = state.orderInvoiceItems.filter((r) => r.walk_in_order_id !== id);
+        }
+      }
+      if (type === 'orderReceipt') {
+        if (cloud) await store.rpc('delete_order_receipt', { p_payment_id: id });
+        state.payments = state.payments.filter((r) => r.id !== id);
+        state.walkInEntries = state.walkInEntries.filter((r) => r.payment_id !== id);
+      }
+      if (type === 'orderItem') {
+        await store.remove('order_items', id);
+        state.orderItems = state.orderItems.filter((r) => r.id !== id);
+      }
+      if (type === 'supplier') {
+        if (state.purchaseBills.some((r) => r.supplier_id === id))
+          throw new Error('This supplier has purchase records and cannot be deleted.');
+        await store.remove('suppliers', id);
+        state.suppliers = state.suppliers.filter((r) => r.id !== id);
+      }
+      if (type === 'purchaseMaterial') {
+        if (
+          state.materialMovements.some((r) => r.material_id === id) ||
+          state.purchaseBillItems.some((r) => r.material_id === id)
+        )
+          throw new Error('This material has stock activity and cannot be deleted.');
+        await store.remove('materials', id);
+        state.materials = state.materials.filter((r) => r.id !== id);
+      }
+      if (cloud && ['orderInvoice', 'orderReceipt'].includes(type)) await store.load();
+      store.persist();
+      closeSheets();
+      render();
+      toast('Record deleted.');
+    });
+  } catch {}
+}
+const viewHandlers = {
+  'party': viewParty,
+  'project': viewProject,
+  'quote': viewQuote,
+  'invoice': viewInvoice,
+  'receipt': viewReceipt,
+  'labour-person': viewLabourPerson,
+  'labour-assignment': viewLabourAssignment,
+  'labour-wage': viewLabourWage,
+  'labour-advance': viewLabourAdvance,
+  'material-assignment': viewMaterialAssignment,
+  'expense-category': viewExpenseCategory,
+  'expense-charge': viewExpenseCharge,
+  'order-invoice': viewOrderInvoice,
+  'order-receipt': viewOrderReceipt,
+  'order-expense': viewOrderExpense,
+  'order-material': viewOrderMaterial,
+  'order-labour': viewOrderLabour,
+  'order-item': viewOrderItem,
+  'supplier': viewSupplier,
+  'purchase-material': viewPurchaseMaterial,
+  'purchase': viewPurchase,
+  'purchase-payment': viewPurchasePayment,
+  'bank-account': viewBankAccount,
+  'bank-transfer-entry': viewBankTransferEntry,
+  'banking-expense': viewBankingExpense,
+};
+document.addEventListener(
+  'click',
+  (e) => {
+    const activeSheet = getActiveEntrySheet();
+    if (activeSheet && isSheetDirty(activeSheet)) {
+      if (e.target.closest('#selectionDialog')) return;
+      const closeBtn = e.target.closest('[data-close]');
+      const isBackdrop = e.target.id === 'backdrop';
+      const isOutside = !activeSheet.contains(e.target);
+      if (closeBtn || isBackdrop || isOutside) {
+        if (!confirm('Discard unsaved changes?')) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          return;
+        }
+        const form = activeSheet.querySelector('form');
+        if (form) form.reset();
+        closeSheets(true);
+        if (closeBtn || isBackdrop) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          return;
+        }
+      }
+    }
+  },
+  true,
+);
+document.addEventListener(
+  'submit',
+  () => {
+    isSaving = true;
+    queueMicrotask(() => {
+      isSaving = false;
+    });
+  },
+  true,
+);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const dialog = document.getElementById('selectionDialog');
+    if (dialog?.open) return;
+    const activeSheet = getActiveEntrySheet();
+    if (activeSheet) {
+      if (isSheetDirty(activeSheet)) {
+        if (!confirm('Discard unsaved changes?')) {
+          e.preventDefault();
+          return;
+        }
+        const form = activeSheet.querySelector('form');
+        if (form) form.reset();
+      }
+      closeSheets(true);
+    }
+  }
+});
+window.addEventListener('beforeunload', (e) => {
+  const activeSheet = getActiveEntrySheet();
+  if (activeSheet && isSheetDirty(activeSheet)) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+document.addEventListener('click', async (e) => {
+  const routeButton = e.target.closest('[data-route]');
+  if (routeButton) route(routeButton.dataset.route);
+  const orderRouteButton = e.target.closest('[data-order-route]');
+  if (orderRouteButton) route(orderRouteButton.dataset.orderRoute);
+  const purchaseRouteButton = e.target.closest('[data-purchase-route]');
+  if (purchaseRouteButton) route(purchaseRouteButton.dataset.purchaseRoute);
+  const bankingRouteButton = e.target.closest('[data-banking-route]');
+  if (bankingRouteButton) route(bankingRouteButton.dataset.bankingRoute);
+  const tabButton = e.target.closest('[data-tab]');
+  if (tabButton) tab(tabButton.dataset.tab);
+  if (e.target.closest('[data-close]') || e.target.id === 'backdrop') closeSheets();
+  const action = e.target.closest('[data-action]')?.dataset.action;
+  (
+    ({
+      'add-party': openParty,
+      'add-project': openProject,
+      'add-quote': openQuote,
+      'scope-change': openScope,
+      'add-receipt': openReceipt,
+      'add-labour-person': openLabourPerson,
+      'assign-labour': openLabourAssignment,
+      'assign-material': () => openMaterialAssignment('assign'),
+      'return-material': () => openMaterialAssignment('return'),
+      'add-expense': openExpenseCategory,
+      'charge-expense': openExpenseCharge,
+      'add-order-invoice': openOrderInvoice,
+      'add-order-receipt': openOrderReceipt,
+      'charge-order-expense': openOrderExpense,
+      'assign-order-material': () => openOrderMaterial('assign'),
+      'return-order-material': () => openOrderMaterial('return'),
+      'assign-order-labour': openOrderLabour,
+      'add-order-item': openOrderItem,
+      'add-supplier': openSupplier,
+      'add-purchase-material': openPurchaseMaterial,
+      'add-purchase': () => openPurchase('credit'),
+      'add-cash-purchase': () => openPurchase('cash'),
+      'add-purchase-payment': openPurchasePayment,
+      'pay-wages': openPayWages,
+      'pay-advance': openPayAdvance,
+      'add-bank-account': openBankAccount,
+      'withdraw-cash': () => openBankingTransfer('withdraw'),
+      'deposit-cash': () => openBankingTransfer('deposit'),
+      'bank-transfer': () => openBankingTransfer('bank'),
+      'charge-banking-expense': openBankingExpense,
+    })[action] || (() => {})
+  )();
+  const projectAction = e.target.closest('[data-project-action]');
+  if (projectAction)
+    route(
+      { receipt: 'receipts', labour: 'labour', material: 'materials', expense: 'expenses' }[
+        projectAction.dataset.projectAction
+      ],
+    );
+  const labourTab = e.target.closest('[data-labour-tab]');
+  if (labourTab) showLabourTab(labourTab.dataset.labourTab);
+  const expenseTab = e.target.closest('[data-expense-tab]');
+  if (expenseTab) showExpenseTab(expenseTab.dataset.expenseTab);
+  const orderExpenseTab = e.target.closest('[data-order-expense-tab]');
+  if (orderExpenseTab) showOrderExpenseTab(orderExpenseTab.dataset.orderExpenseTab);
+  const orderLabourTab = e.target.closest('[data-order-labour-tab]');
+  if (orderLabourTab) showOrderLabourTab(orderLabourTab.dataset.orderLabourTab);
+  const bankingExpenseTab = e.target.closest('[data-banking-expense-tab]');
+  if (bankingExpenseTab) showBankingExpenseTab(bankingExpenseTab.dataset.bankingExpenseTab);
+  const payWorker = e.target.closest('[data-pay-worker]');
+  if (payWorker) openPayWages(payWorker.dataset.payWorker);
+  const removeOrderLine = e.target.closest('[data-remove-order-line]');
+  if (removeOrderLine) {
+    const lines = $$('.invoice-line', $('#orderInvoiceLines'));
+    if (lines.length === 1) toast('An invoice needs at least one item.');
+    else {
+      removeOrderLine.closest('.invoice-line').remove();
+      recalcOrderInvoice();
+    }
+  }
+  const removePurchaseLine = e.target.closest('[data-remove-purchase-line]');
+  if (removePurchaseLine) {
+    const lines = $$('.purchase-line', $('#purchaseLines'));
+    if (lines.length === 1) toast('A purchase needs at least one material.');
+    else {
+      removePurchaseLine.closest('.purchase-line').remove();
+      recalcPurchase();
+    }
+  }
+  const detailsToggle = e.target.closest('[data-toggle-details]');
+  if (detailsToggle) {
+    const target = $('#' + detailsToggle.dataset.toggleDetails),
+      expanded = detailsToggle.getAttribute('aria-expanded') === 'true';
+    target?.classList.toggle('hidden', expanded);
+    detailsToggle.setAttribute('aria-expanded', String(!expanded));
+    if (!expanded) target?.querySelector('input,textarea,select')?.focus();
+  }
+  const lineDetails = e.target.closest('[data-toggle-line-details]');
+  if (lineDetails) {
+    const target = $('[data-purchase-line-details-wrap]', lineDetails.closest('.purchase-line')),
+      expanded = lineDetails.getAttribute('aria-expanded') === 'true';
+    target.classList.toggle('hidden', expanded);
+    lineDetails.setAttribute('aria-expanded', String(!expanded));
+    if (!expanded) $('textarea', target).focus();
+  }
+  for (const [name, handler] of Object.entries(viewHandlers)) {
+    const button = e.target.closest(`[data-view-${name}]`);
+    if (button) {
+      handler(button.getAttribute(`data-view-${name}`));
+      break;
+    }
+  }
+  const approve = e.target.closest('[data-approve-quote]');
+  if (approve) openApproval(approve.dataset.approveQuote);
+  const download = e.target.closest('[data-detail-download]');
+  if (download)
+    try {
+      await downloadCurrent(download);
+    } catch {}
+  const share = e.target.closest('[data-detail-share]');
+  if (share)
+    try {
+      await shareCurrent(share);
+    } catch {}
+  const editDisclaimer = e.target.closest('[data-edit-disclaimer]');
+  if (editDisclaimer) {
+    e.preventDefault();
+    e.stopPropagation();
+    openDisclaimerEditor();
+    return;
+  }
+  const disclaimer = e.target.closest('[data-toggle-disclaimer]');
+  if (disclaimer) {
+    const expanded = disclaimer.getAttribute('aria-expanded') === 'true';
+    disclaimer.setAttribute('aria-expanded', String(!expanded));
+    disclaimer.closest('[data-disclaimer]')?.classList.toggle('expanded', !expanded);
+  }
+  if (e.target.id === 'detailDelete') await deleteDetail(e.target);
+  if (e.target.id === 'detailEdit') {
+    const d = state.detail;
+    closeSheets();
+    if (d.type === 'party') openParty(d.id);
+    if (d.type === 'project') openProject(d.id);
+    if (d.type === 'quote') openQuote(d.id);
+    if (d.type === 'receipt') openReceipt(d.id);
+    if (d.type === 'labourPerson') openLabourPerson(d.id);
+    if (d.type === 'labourAdvance') openPayAdvance(d.id);
+    if (d.type === 'expenseCategory') openExpenseCategory(d.id);
+    if (d.type === 'orderInvoice') openOrderInvoice(d.id);
+    if (d.type === 'orderReceipt') openOrderReceipt(d.id);
+    if (d.type === 'orderItem') openOrderItem(d.id);
+    if (d.type === 'supplier') openSupplier(d.id);
+    if (d.type === 'purchaseMaterial') openPurchaseMaterial(d.id);
+    if (d.type === 'bankAccount') openBankAccount(d.id);
+  }
+});
+[
+  'partySearch',
+  'projectSearch',
+  'quoteSearch',
+  'invoiceSearch',
+  'receiptSearch',
+  'materialAssignmentSearch',
+  'orderInvoiceSearch',
+  'orderReceiptSearch',
+  'orderMaterialSearch',
+  'orderItemSearch',
+  'supplierSearch',
+  'purchaseMaterialSearch',
+  'purchaseSearch',
+  'cashPurchaseSearch',
+  'consumablePoolSearch',
+  'purchasePaymentSearch',
+  'bankAccountSearch',
+].forEach((id) => $('#' + id).addEventListener('input', render));
+$('#quoteStart').addEventListener('change', setQuoteDays);
+$('#quoteEnd').addEventListener('change', setQuoteDays);
+$('#labourAssignmentPerson').addEventListener('change', updateLabourCost);
+$('#labourDayType').addEventListener('change', updateLabourCost);
+['materialAssignmentProject', 'materialAssignmentMaterial'].forEach((id) =>
+  $('#' + id).addEventListener('change', updateMaterialCost),
+);
+$('#materialAssignmentQuantity').addEventListener('input', updateMaterialCost);
+$('#receiptProject').addEventListener('change', updateReceiptDue);
+$('#orderReceiptOrder').addEventListener('change', updateOrderReceiptDue);
+[
+  'projectOpeningInvoice',
+  'projectOpeningReceived',
+  'projectOpeningExpenses',
+  'projectOpeningMaterial',
+  'projectOpeningLabour',
+].forEach((id) => $('#' + id).addEventListener('input', updateProjectOpening));
+$('#addOrderInvoiceLine').addEventListener('click', () => addOrderInvoiceLine());
+$('#orderInvoiceMobile').addEventListener('input', autofillOrderCustomer);
+$('#orderInvoiceMobile').addEventListener('change', autofillOrderCustomer);
+$('#orderInvoiceDiscount').addEventListener('input', recalcOrderInvoice);
+$('#orderInvoiceLines').addEventListener('input', (e) => {
+  if (e.target.matches('[data-order-line-qty],[data-order-line-rate]')) recalcOrderInvoice();
+});
+$('#orderInvoiceLines').addEventListener('change', (e) => {
+  if (e.target.matches('[data-order-line-item]')) {
+    const line = e.target.closest('.invoice-line'),
+      item = state.orderItems.find((r) => r.id === e.target.value),
+      details = $('[data-order-line-details]', line);
+    if (item && !details.value) details.value = item.details || '';
+    recalcOrderInvoice();
+  }
+});
+['orderMaterialOrder', 'orderMaterialItem'].forEach((id) =>
+  $('#' + id).addEventListener('change', updateOrderMaterialCost),
+);
+$('#orderMaterialQuantity').addEventListener('input', updateOrderMaterialCost);
+$('#orderLabourPerson').addEventListener('change', updateOrderLabourCost);
+$('#orderLabourDay').addEventListener('change', updateOrderLabourCost);
+$('#addPurchaseLine').addEventListener('click', () => addPurchaseLine());
+$('#purchaseDiscount').addEventListener('input', recalcPurchase);
+$('#purchaseLines').addEventListener('input', (e) => {
+  if (e.target.matches('[data-purchase-line-qty],[data-purchase-line-rate]')) recalcPurchase();
+});
+$('#purchaseLines').addEventListener('change', (e) => {
+  if (e.target.matches('[data-purchase-line-material]')) {
+    const line = e.target.closest('.purchase-line'),
+      item = material(e.target.value);
+    if (item)
+      $('[data-purchase-line-rate]', line).value = isConsumable(item)
+        ? ''
+        : materialMetrics(item).unitCost || '';
+    syncPurchaseLine(line);
+  }
+});
+$('#purchaseMaterialTracking').addEventListener('change', syncMaterialTracking);
+$('#purchasePaymentSupplier').addEventListener('change', updatePurchasePaymentDue);
+$('#payWagesLabourer').addEventListener('change', () => updatePayWageSummary(true));
+$('#payWagesAmount').addEventListener('input', () => updatePayWageSummary(false));
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-toggle-disclaimer]')) {
+    e.preventDefault();
+    e.target.click();
+  }
+});
+$('#bankTransferFrom').addEventListener('change', updateTransferBalance);
+$('#logoutBtn').addEventListener('click', () => {
+  if (confirm('Sign out of Mughal Interior Accounts?')) logout();
+});
+function logout(show = true) {
+  localStorage.removeItem('mi_mobile_session');
+  state.token = null;
+  state.refreshToken = null;
+  state.expiresAt = 0;
+  state.userId = null;
+  store.sync = null;
+  $('#app').classList.add('hidden');
+  $('#loginScreen').classList.remove('hidden');
+  if (show) toast('Signed out.');
+}
+function makeDetailsOptional() {
+  $$('textarea')
+    .filter((node) => /details|description/i.test(node.id))
+    .forEach((node) => {
+      node.required = false;
+      const label = node.closest('label'),
+        text = label?.childNodes?.[0];
+      if (text?.nodeType === Node.TEXT_NODE) text.nodeValue = text.nodeValue.replace(/\s*\*\s*$/, '');
+    });
+}
+
+function installOperationalEnhancements() {
+  const addField = (form, anchor, html) => {
+    const id = html.match(/id="([^"]+)/)?.[1];
+    if (id && $('#' + id, form)) return;
+    const node = $(anchor, form);
+    (node?.closest('label') || node)?.insertAdjacentHTML('beforebegin', html);
+  };
+  addField(
+    $('#expenseChargeForm'),
+    '#expenseChargeAmount',
+    '<label>Paid from *<select id="expenseChargeAccount" required></select></label>',
+  );
+  addField(
+    $('#orderExpenseChargeForm'),
+    '#orderExpenseAmount',
+    '<label>Paid from *<select id="orderExpenseAccount" required></select></label>',
+  );
+  addField(
+    $('#purchaseMaterialForm'),
+    '#purchaseMaterialDetails',
+    '<label id="purchaseMaterialOpeningRateLabel">Opening rate<input id="purchaseMaterialOpeningRate" type="number" min="0" step="0.01" inputmode="decimal"><small class="field-help">Cost per unit for opening trackable stock.</small></label>',
+  );
+  addField(
+    $('#purchaseForm'),
+    '#purchaseDate',
+    '<label id="cashPurchaseSupplierNameLabel" class="hidden">Supplier name<input id="cashPurchaseSupplierName" maxlength="160" placeholder="Enter cash supplier name"></label>',
+  );
+}
+
+const baseRoute = route;
+route = function (name) {
+  baseRoute(name);
+  if (name === 'partnerDrawings') setScreenHeader('partnerDrawings', `${partnerName()} drawings`);
+};
+const baseRenderBanking = renderBanking;
+renderBanking = function () {
+  baseRenderBanking();
+  const rows = state.payments.filter(
+    (row) => row.payment_type === 'expense' && !row.project_id && !row.walk_in_order_id,
+  );
+  $('#bankingExpenseChargeList').innerHTML = rows.length
+    ? rows
+        .map((row) => {
+          const cat = expenseCategory(row.expense_category_id || row.reference);
+          return `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(row.payment_number || shortCode('EXP', row.id))}</span><h3>${esc(cat?.name || row.description)}</h3><div class="record-meta"><span>${date(row.payment_date)}</span><span>${esc(account(row.from_account_id)?.name || 'Account')}</span><span>${esc(row.notes || 'Business overhead')}</span></div></div><div class="record-side"><strong>${money(row.amount)}</strong><button class="view-button" data-view-banking-expense="${row.id}">View</button></div></div></article>`;
+        })
+        .join('')
+    : empty('No business expenses', 'Charge rent, salaries or other monthly overheads.');
+};
+const baseRender = render;
+render = function () {
+  baseRender();
+  renderPartnerDrawings();
+};
+
+function accountOptions(selected = '') {
+  return options(
+    state.paymentAccounts,
+    (row) => `${row.name}${row.bank_name ? ` - ${row.bank_name}` : ''} · ${money(accountBalance(row.id))}`,
+    'Select bank / cash account',
+  ).replace(`value="${selected}"`, `value="${selected}" selected`);
+}
+function renderPartnerDrawings() {
+  const node = $('#partnerDrawingList');
+  if (!node) return;
+  const rows = state.payments.filter((row) => row.payment_type === 'partner_drawing');
+  node.innerHTML = rows.length
+    ? rows
+        .map(
+          (row) =>
+            `<article class="record-card"><div class="record-top"><div><span class="record-id">${esc(row.payment_number || 'PARTNER DRAWING')}</span><h3>${esc(partnerName())}</h3><div class="record-meta"><span>${date(row.payment_date)}</span><span>${esc(account(row.from_account_id)?.name || 'Account')}</span>${row.notes ? `<span>${esc(row.notes)}</span>` : ''}</div></div><div class="record-side"><strong>${money(row.amount)}</strong><button class="view-button" data-view-partner-drawing="${row.id}">View</button></div></div></article>`,
+        )
+        .join('')
+    : empty('No partner drawings', `Record a ${partnerName()} partner drawing.`);
+}
+
+function openLabourAssignment(id = '') {
+  const r = state.labourAssignments.find((row) => row.id === id);
+  if (!r && !approvedProjects().length) {
+    toast('Approve a project quote before assigning labour.');
+    return;
+  }
+  if (!state.labourers.length) {
+    toast('Add a labour person first.');
+    return;
+  }
+  const jobs = r
+    ? [
+        ...new Map(
+          [...approvedProjects(), project(r.project_id)].filter(Boolean).map((row) => [row.id, row]),
+        ).values(),
+      ]
+    : approvedProjects();
+  const form = $('#labourAssignmentForm');
+  form.reset();
+  form.dataset.editId = r?.id || '';
+  $('#labourAssignmentDate').value = r?.assignment_date || today();
+  $('#labourAssignmentProject').innerHTML = options(jobs, projectLabel, 'Select project - party');
+  $('#labourAssignmentProject').value = r?.project_id || '';
+  $('#labourAssignmentPerson').innerHTML = options(
+    state.labourers.filter((x) => x.active !== false || x.id === r?.labourer_id),
+    (x) => `${x.name} - ${money(x.daily_wage_rate)}`,
+    'Select labour person',
+  );
+  $('#labourAssignmentPerson').value = r?.labourer_id || '';
+  $('#labourDayType').value = String(r?.days || 1);
+  $('#labourAssignmentDetails').value = r?.notes || '';
+  $('.sheet-head h2', $('#labourAssignmentSheet')).textContent = r ? 'Edit assigned labour' : 'Assign labour';
+  updateLabourCost();
+  openSheet('#labourAssignmentSheet');
+}
+function openMaterialAssignment(mode = 'assign', id = '') {
+  const r = state.materialMovements.find((row) => row.id === id);
+  mode = r ? (['project_return'].includes(r.movement_type) ? 'return' : 'assign') : mode;
+  if (!r && !approvedProjects().length) {
+    toast('Approve an active project quote before assigning material.');
+    return;
+  }
+  if (!state.materials.length) {
+    toast('Add materials and purchases in Purchasing first.');
+    return;
+  }
+  const jobs = r
+      ? [
+          ...new Map(
+            [...approvedProjects(), project(r.project_id)].filter(Boolean).map((row) => [row.id, row]),
+          ).values(),
+        ]
+      : approvedProjects(),
+    form = $('#materialAssignmentForm');
+  form.reset();
+  form.dataset.editId = r?.id || '';
+  $('#materialAssignmentMode').value = mode;
+  $('#materialAssignmentDate').value = r?.movement_date || today();
+  $('#materialAssignmentProject').innerHTML = options(jobs, projectLabel, 'Select project - party');
+  $('#materialAssignmentProject').value = r?.project_id || '';
+  $('#materialAssignmentMaterial').innerHTML = options(
+    state.materials,
+    (x) =>
+      `${x.name} - ${isConsumable(x) ? money(materialMetrics(x).stock) : `${qty(materialMetrics(x).stock)} ${x.unit}`} available`,
+    'Select material',
+  );
+  $('#materialAssignmentMaterial').value = r?.material_id || '';
+  const item = material(r?.material_id),
+    pool = isConsumable(item);
+  $('#materialAssignmentQuantity').value = r ? (pool ? movementValue(r) : r.quantity) : '';
+  $('#materialAssignmentDetails').value = r?.notes || '';
+  $('#materialAssignmentSheetTitle').textContent =
+    `${r ? 'Edit ' : ''}${mode === 'return' ? 'return material' : 'assigned material'}`;
+  updateMaterialCost();
+  openSheet('#materialAssignmentSheet');
+}
+function openExpenseCharge(id = '') {
+  const r = state.entries.find((row) => row.id === id);
+  if (!r && !approvedProjects().length) {
+    toast('Approve a project quote before charging expenses.');
+    return;
+  }
+  if (!state.expenseCategories.length) {
+    toast('Add an expense type first.');
+    return;
+  }
+  const jobs = r
+      ? [
+          ...new Map(
+            [...approvedProjects(), project(r.project_id)].filter(Boolean).map((row) => [row.id, row]),
+          ).values(),
+        ]
+      : approvedProjects(),
+    payment = state.payments.find((row) => row.id === r?.payment_id),
+    form = $('#expenseChargeForm');
+  form.reset();
+  form.dataset.editId = r?.id || '';
+  $('#expenseChargeDate').value = r?.entry_date || today();
+  $('#expenseChargeProject').innerHTML = options(jobs, projectLabel, 'Select project - party');
+  $('#expenseChargeProject').value = r?.project_id || '';
+  $('#expenseChargeProject').disabled = Boolean(r);
+  $('#expenseChargeCategory').innerHTML = options(state.expenseCategories, (x) => x.name, 'Select expense');
+  $('#expenseChargeCategory').value = r?.expense_category_id || '';
+  $('#expenseChargeAccount').innerHTML = accountOptions(payment?.from_account_id || '');
+  $('#expenseChargeAmount').value = r?.amount ?? '';
+  $('#expenseChargeDetails').value = r?.notes || '';
+  $('.sheet-head h2', $('#expenseChargeSheet')).textContent = r ? 'Edit project expense' : 'Charge expense';
+  openSheet('#expenseChargeSheet');
+}
+function openOrderExpense(id = '') {
+  const r = state.walkInEntries.find((row) => row.id === id);
+  if (!r && !state.walkInOrders.length) {
+    toast('Add an order invoice first.');
+    return;
+  }
+  if (!state.expenseCategories.length) {
+    toast('Add an expense type first.');
+    return;
+  }
+  const orders = r
+      ? [
+          ...new Map(
+            [...state.walkInOrders.filter((x) => x.status !== 'Cancelled'), walkInOrder(r.walk_in_order_id)]
+              .filter(Boolean)
+              .map((row) => [row.id, row]),
+          ).values(),
+        ]
+      : state.walkInOrders.filter((x) => x.status !== 'Cancelled'),
+    payment = state.payments.find((row) => row.id === r?.payment_id),
+    form = $('#orderExpenseChargeForm');
+  form.reset();
+  form.dataset.editId = r?.id || '';
+  $('#orderExpenseDate').value = r?.entry_date || today();
+  $('#orderExpenseOrder').innerHTML = options(orders, orderLabel, 'Select order - customer');
+  $('#orderExpenseOrder').value = r?.walk_in_order_id || '';
+  $('#orderExpenseOrder').disabled = Boolean(r);
+  $('#orderExpenseCategory').innerHTML = options(state.expenseCategories, (x) => x.name, 'Select expense');
+  $('#orderExpenseCategory').value = r?.expense_category_id || '';
+  $('#orderExpenseAccount').innerHTML = accountOptions(payment?.from_account_id || '');
+  $('#orderExpenseAmount').value = r?.amount ?? '';
+  $('#orderExpenseDetails').value = r?.notes || '';
+  $('.sheet-head h2', $('#orderExpenseChargeSheet')).textContent = r
+    ? 'Edit order expense'
+    : 'Assign expense';
+  openSheet('#orderExpenseChargeSheet');
+}
+function openOrderMaterial(mode = 'assign', id = '') {
+  const r = state.materialMovements.find((row) => row.id === id);
+  mode = r ? (r.movement_type === 'walk_in_return' ? 'return' : 'assign') : mode;
+  if (!r && !state.walkInOrders.length) {
+    toast('Add an order invoice first.');
+    return;
+  }
+  const orders = r
+      ? [
+          ...new Map(
+            [
+              ...state.walkInOrders.filter((x) => ['Pending', 'In Progress', 'Ready'].includes(x.status)),
+              walkInOrder(r.walk_in_order_id),
+            ]
+              .filter(Boolean)
+              .map((row) => [row.id, row]),
+          ).values(),
+        ]
+      : state.walkInOrders.filter((x) => ['Pending', 'In Progress', 'Ready'].includes(x.status)),
+    form = $('#orderMaterialForm');
+  form.reset();
+  form.dataset.editId = r?.id || '';
+  $('#orderMaterialMode').value = mode;
+  $('#orderMaterialDate').value = r?.movement_date || today();
+  $('#orderMaterialOrder').innerHTML = options(orders, orderLabel, 'Select order - customer');
+  $('#orderMaterialOrder').value = r?.walk_in_order_id || '';
+  $('#orderMaterialItem').innerHTML = options(state.materials, (x) => x.name, 'Select material');
+  $('#orderMaterialItem').value = r?.material_id || '';
+  const item = material(r?.material_id);
+  $('#orderMaterialQuantity').value = r ? (isConsumable(item) ? movementValue(r) : r.quantity) : '';
+  $('#orderMaterialDetails').value = r?.notes || '';
+  $('#orderMaterialSheetTitle').textContent =
+    `${r ? 'Edit ' : ''}${mode === 'return' ? 'return material' : 'assigned material'}`;
+  updateOrderMaterialCost();
+  openSheet('#orderMaterialSheet');
+}
+function openOrderLabour(id = '') {
+  const r = state.labourAssignments.find((row) => row.id === id);
+  if (!r && !state.walkInOrders.length) {
+    toast('Add an order invoice first.');
+    return;
+  }
+  const orders = r
+      ? [
+          ...new Map(
+            [...state.walkInOrders.filter((x) => x.status !== 'Cancelled'), walkInOrder(r.walk_in_order_id)]
+              .filter(Boolean)
+              .map((row) => [row.id, row]),
+          ).values(),
+        ]
+      : state.walkInOrders.filter((x) => x.status !== 'Cancelled'),
+    form = $('#orderLabourForm');
+  form.reset();
+  form.dataset.editId = r?.id || '';
+  $('#orderLabourDate').value = r?.assignment_date || today();
+  $('#orderLabourOrder').innerHTML = options(orders, orderLabel, 'Select order - customer');
+  $('#orderLabourOrder').value = r?.walk_in_order_id || '';
+  $('#orderLabourPerson').innerHTML = options(
+    state.labourers.filter((x) => x.active !== false || x.id === r?.labourer_id),
+    (x) => `${x.name} - ${money(x.daily_wage_rate)}`,
+    'Select labour person',
+  );
+  $('#orderLabourPerson').value = r?.labourer_id || '';
+  $('#orderLabourDay').value = String(r?.days || 1);
+  $('#orderLabourDetails').value = r?.notes || '';
+  $('.sheet-head h2', $('#orderLabourSheet')).textContent = r ? 'Edit assigned labour' : 'Assign labour';
+  updateOrderLabourCost();
+  openSheet('#orderLabourSheet');
+}
+function openPayWages(workerId = '', settlementId = '') {
+  const settlement = state.labourWageSettlements.find((row) => row.id === settlementId),
+    labourerId = settlement?.labourer_id || workerId,
+    workers = settlement
+      ? [labourer(labourerId)].filter(Boolean)
+      : state.labourers.filter((row) => labourUnpaidTotal(row.id) > 0);
+  if (!workers.length) {
+    toast('There are no unpaid labour wages.');
+    return;
+  }
+  const form = $('#payWagesForm');
+  form.reset();
+  form.dataset.editId = settlement?.id || '';
+  $('#payWagesLabourer').innerHTML = options(
+    workers,
+    (row) =>
+      `${row.name} · Due ${money(labourUnpaidTotal(row.id) + (settlement && row.id === labourerId ? Number(settlement.gross_wages) : 0))}`,
+    'Select labour person',
+  );
+  $('#payWagesLabourer').value = labourerId || '';
+  $('#payWagesLabourer').disabled = Boolean(settlement);
+  $('#payWagesDate').value = settlement?.settlement_date || today();
+  const payment = state.payments.find((row) => row.id === settlement?.payment_id);
+  $('#payWagesAccount').innerHTML = accountOptions(payment?.from_account_id || '');
+  $('#payWagesAmount').value = settlement?.gross_wages ?? '';
+  $('#payWagesDetails').value = settlement?.notes || '';
+  $('.sheet-head h2', $('#payWagesSheet')).textContent = settlement ? 'Edit wage payment' : 'Pay wages';
+  updatePayWageSummary(!settlement);
+  openSheet('#payWagesSheet');
+}
+function updatePayWageSummary(resetAmount = false) {
+  const workerId = $('#payWagesLabourer').value,
+    editId = $('#payWagesForm').dataset.editId,
+    current = state.labourWageSettlements.find((row) => row.id === editId),
+    currentPaid = new Map(
+      state.labourWageSettlementItems
+        .filter((row) => row.settlement_id === editId)
+        .map((row) => [row.labour_assignment_id, Number(row.amount || 0)]),
+    ),
+    rows = state.labourAssignments.filter(
+      (row) =>
+        row.labourer_id === workerId &&
+        assignmentOutstanding(row) + Number(currentPaid.get(row.id) || 0) > 0.005,
+    ),
+    gross = rows.reduce(
+      (sum, row) => sum + assignmentOutstanding(row) + Number(currentPaid.get(row.id) || 0),
+      0,
+    ),
+    advance = labourAdvanceAvailable(workerId) + Number(current?.advance_applied || 0),
+    amountField = $('#payWagesAmount');
+  if (resetAmount) amountField.value = '';
+  else if (Number(amountField.value) > gross) amountField.value = numberInputValue(gross);
+  amountField.max = gross || '';
+  const settle = Math.min(gross, Number(amountField.value || 0)),
+    applied = Math.min(settle, advance),
+    cash = Math.max(0, settle - applied);
+  $('#unpaidWageLines').innerHTML = rows.length
+    ? rows
+        .map(
+          (row) =>
+            `<article class="wage-line"><div><b>${esc(labourTaskLabel(row))}</b><small>${date(row.assignment_date)} · ${qty(row.days)} day${Number(row.days) === 1 ? '' : 's'} × ${money(row.daily_rate)}</small></div><strong>${money(assignmentOutstanding(row) + Number(currentPaid.get(row.id) || 0))}</strong></article>`,
+        )
+        .join('')
+    : empty('No unpaid wages', 'Choose another labour person.');
+  $('#payWagesGross').textContent = money(gross);
+  $('#payWagesAdvance').textContent = money(advance);
+  $('#payWagesAccount').required = cash > 0;
+  $('#payWagesAccount').disabled = cash === 0;
+  $('#payWagesAccountLabel').classList.toggle('hidden', cash === 0);
+  $('#payWagesAccountHelp').textContent =
+    amountField.value === ''
+      ? 'Enter the amount you want to settle.'
+      : cash > 0
+        ? `${money(applied)} advance will be applied and ${money(cash)} will be paid from this account.`
+        : `${money(applied)} will be settled from the available advance.`;
+}
+function openBankingExpense(id = '') {
+  if (!state.expenseCategories.length || !state.paymentAccounts.length) {
+    toast('Add an expense type and payment account first.');
+    return;
+  }
+  const r = state.payments.find((row) => row.id === id),
+    form = $('#bankingExpenseForm');
+  form.reset();
+  form.dataset.editId = r?.id || '';
+  $('#bankingExpenseDate').value = r?.payment_date || today();
+  $('#bankingExpenseCategory').innerHTML = options(
+    state.expenseCategories,
+    (row) => row.name,
+    'Select expense',
+  );
+  $('#bankingExpenseCategory').value = r?.expense_category_id || r?.reference || '';
+  $('#bankingExpenseAccount').innerHTML = accountOptions(r?.from_account_id || '');
+  $('#bankingExpenseAmount').value = r?.amount ?? '';
+  $('#bankingExpenseDetails').value = r?.notes || '';
+  $('.sheet-head h2', $('#bankingExpenseSheet')).textContent = r ? 'Edit overhead expense' : 'Charge expense';
+  openSheet('#bankingExpenseSheet');
+}
+function openPartnerDrawing(id = '') {
+  if (!state.paymentAccounts.length) {
+    toast('Add a bank or cash account first.');
+    return;
+  }
+  const r = state.payments.find((row) => row.id === id);
+  $('#partnerDrawingForm').reset();
+  $('#partnerDrawingId').value = r?.id || '';
+  $('#partnerDrawingDate').value = r?.payment_date || today();
+  $('#partnerDrawingAccount').innerHTML = accountOptions(r?.from_account_id || '');
+  $('#partnerDrawingAmount').value = r?.amount ?? '';
+  $('#partnerDrawingDetails').value = r?.notes || '';
+  $('#partnerDrawingSheetTitle').textContent = r ? `Edit ${partnerName()} drawing` : `Record ${partnerName()} drawing`;
+  openSheet('#partnerDrawingSheet');
+}
+function viewPartnerDrawing(id) {
+  const r = state.payments.find((row) => row.id === id);
+  if (r)
+    setupDetail('partnerDrawing', r, {
+      title: partnerName(),
+      kicker: 'PARTNER DRAWING',
+      html: detailCard(r.payment_number || 'PARTNER DRAWING', partnerName(), money(r.amount), [
+        ['Date', date(r.payment_date)],
+        ['Paid from', account(r.from_account_id)?.name],
+        ['Details', r.notes],
+        ['Profitability impact', 'None'],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewLabourAssignment(id) {
+  const r = state.labourAssignments.find((x) => x.id === id),
+    job = project(r?.project_id),
+    worker = labourer(r?.labourer_id);
+  if (r)
+    setupDetail('labourAssignment', r, {
+      title: worker?.name || 'Labour assignment',
+      kicker: 'ASSIGNED LABOUR',
+      html: detailCard(date(r.assignment_date), worker?.name || 'Labour', money(assignmentAmount(r)), [
+        ['Project', job ? projectLabel(job) : 'Project'],
+        ['Days worked', `${qty(r.days)} day${Number(r.days) === 1 ? '' : 's'}`],
+        ['Daily rate', money(r.daily_rate)],
+        ['Actual wage cost', money(assignmentAmount(r))],
+        ['Details', r.notes],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewMaterialAssignment(id) {
+  const r = state.materialMovements.find((x) => x.id === id),
+    item = material(r?.material_id),
+    job = project(r?.project_id),
+    returned = r?.movement_type === 'project_return',
+    pool = isConsumable(item);
+  if (r)
+    setupDetail('materialAssignment', r, {
+      title: item?.name || 'Material',
+      kicker: returned ? 'RETURNED MATERIAL' : 'ASSIGNED MATERIAL',
+      html: detailCard(date(r.movement_date), item?.name || 'Material', money(movementValue(r)), [
+        ['Movement', returned ? 'Returned to stock' : 'Assigned to project'],
+        ['Project', job ? projectLabel(job) : ''],
+        [
+          pool ? 'Consumable amount' : 'Quantity',
+          pool ? money(movementValue(r)) : `${qty(r.quantity)} ${item?.unit || 'units'}`,
+        ],
+        ['Purchase cost per unit', pool ? null : money(r.unit_cost)],
+        ['Total material cost', money(movementValue(r))],
+        ['Details', r.notes],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewExpenseCharge(id) {
+  const r = state.entries.find((x) => x.id === id),
+    job = project(r?.project_id),
+    cat = expenseCategory(r?.expense_category_id),
+    payment = state.payments.find((x) => x.id === r?.payment_id);
+  if (r)
+    setupDetail('expenseCharge', r, {
+      title: cat?.name || r.description,
+      kicker: 'CHARGED EXPENSE',
+      html: detailCard(date(r.entry_date), cat?.name || r.description, money(r.amount), [
+        ['Project', job ? projectLabel(job) : 'Project'],
+        ['Paid from', account(payment?.from_account_id)?.name || 'Select when editing'],
+        ['Expense', cat?.name || r.description],
+        ['Details', r.notes],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewOrderExpense(id) {
+  const r = state.walkInEntries.find((x) => x.id === id),
+    order = walkInOrder(r?.walk_in_order_id),
+    cat = expenseCategory(r?.expense_category_id),
+    payment = state.payments.find((x) => x.id === r?.payment_id);
+  if (r)
+    setupDetail('orderExpense', r, {
+      title: cat?.name || r.description,
+      kicker: 'ORDER EXPENSE',
+      html: detailCard(date(r.entry_date), cat?.name || r.description, money(r.amount), [
+        ['Order', order ? orderLabel(order) : 'Order'],
+        ['Paid from', account(payment?.from_account_id)?.name || 'Select when editing'],
+        ['Expense', cat?.name || r.description],
+        ['Details', r.notes],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewOrderMaterial(id) {
+  const r = state.materialMovements.find((x) => x.id === id),
+    order = walkInOrder(r?.walk_in_order_id),
+    item = material(r?.material_id),
+    returned = r?.movement_type === 'walk_in_return',
+    pool = isConsumable(item);
+  if (r)
+    setupDetail('orderMaterial', r, {
+      title: item?.name || 'Material',
+      kicker: returned ? 'RETURNED MATERIAL' : 'ASSIGNED MATERIAL',
+      html: detailCard(date(r.movement_date), item?.name || 'Material', money(movementValue(r)), [
+        ['Order', order ? orderLabel(order) : 'Order'],
+        ['Movement', returned ? 'Returned to stock' : 'Assigned to order'],
+        [
+          pool ? 'Consumable amount' : 'Quantity',
+          pool ? money(movementValue(r)) : `${qty(r.quantity)} ${item?.unit || 'units'}`,
+        ],
+        ['Purchase cost per unit', pool ? null : money(r.unit_cost)],
+        ['Details', r.notes],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewOrderLabour(id) {
+  const r = state.labourAssignments.find((x) => x.id === id),
+    order = walkInOrder(r?.walk_in_order_id),
+    worker = labourer(r?.labourer_id);
+  if (r)
+    setupDetail('orderLabour', r, {
+      title: worker?.name || 'Labour',
+      kicker: 'ORDER LABOUR',
+      html: detailCard(date(r.assignment_date), worker?.name || 'Labour', money(assignmentAmount(r)), [
+        ['Order', order ? orderLabel(order) : 'Order'],
+        ['Days worked', `${qty(r.days)} day${Number(r.days) === 1 ? '' : 's'}`],
+        ['Daily rate', money(r.daily_rate)],
+        ['Actual wage cost', money(assignmentAmount(r))],
+        ['Details', r.notes],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewLabourWage(id) {
+  const r = state.labourWageSettlements.find((row) => row.id === id),
+    worker = labourer(r?.labourer_id),
+    payment = state.payments.find((row) => row.id === r?.payment_id);
+  if (r)
+    setupDetail('labourWage', r, {
+      title: worker?.name || 'Wage payment',
+      kicker: 'WAGE SETTLEMENT',
+      html: detailCard(date(r.settlement_date), worker?.name || 'Labour', money(r.gross_wages), [
+        ['Unpaid wages settled', money(r.gross_wages)],
+        ['Advance adjusted', money(r.advance_applied)],
+        ['Paid from account', money(r.cash_paid)],
+        ['Account', r.cash_paid > 0 ? account(payment?.from_account_id)?.name : 'Advance only'],
+        ['Details', r.notes],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function viewBankingExpense(id) {
+  const r = state.payments.find((row) => row.id === id),
+    cat = expenseCategory(r?.expense_category_id || r?.reference);
+  if (r)
+    setupDetail('bankingExpense', r, {
+      title: cat?.name || r.description,
+      kicker: 'BUSINESS OVERHEAD',
+      html: detailCard(r.payment_number || 'OVERHEAD EXPENSE', cat?.name || r.description, money(r.amount), [
+        ['Date', date(r.payment_date)],
+        ['Paid from', account(r.from_account_id)?.name],
+        ['Details', r.notes],
+      ]),
+      editable: true,
+      deletable: false,
+    });
+}
+function purchaseDocument(r) {
+  const vendor = supplier(r.supplier_id),
+    lines = purchaseLines(r.id),
+    vendorName = r.cash_supplier_name || vendor?.name;
+  return `<article class="detail-card pdf-document"><div class="detail-hero"><p>PURCHASE · ${esc(r.bill_number)}</p><h3>${esc(vendorName || 'Supplier')}</h3><div class="detail-amount">${money(r.total_amount)}</div></div>${detailRows(
+    [
+      ['Business', PRINT_BUSINESS_NAME],
+      ['Supplier', vendorName],
+      ['Company', r.cash_supplier_name ? null : vendor?.company_name || vendor?.contact_name],
+      ['Purchase date', date(r.bill_date)],
+      ['Details', r.notes],
+    ],
+  )}<div class="order-line-list">${lines
+    .map((line) => {
+      const item = material(line.material_id),
+        pool = isConsumable(item);
+      return `<div class="order-line-row"><div><b>${esc(item?.name || 'Material')}</b><small>${pool ? 'Consumable pool' : `${qty(line.quantity)} ${esc(item?.unit || 'units')} × ${money(line.unit_cost)}`}${line.details ? ` · ${esc(line.details)}` : ''}</small></div><strong>${money(line.line_total ?? movementValue(line))}</strong></div>`;
+    })
+    .join('')}</div>${detailRows([
+    ['Subtotal', money(r.subtotal ?? Number(r.total_amount) + Number(r.discount || 0))],
+    ['Discount', `− ${money(r.discount)}`],
+    ['Grand total', money(r.total_amount)],
+    ['Amount paid', money(r.amount_paid)],
+    ['Balance due', money(purchaseDue(r))],
+    ['Payment status', r.payment_status],
+  ])}</article>`;
+}
+
+function materialBulkConfig(projectMode) {
+  return projectMode
+    ? {
+        form: '#materialAssignmentForm',
+        sheet: '#materialAssignmentSheet',
+        title: '#materialAssignmentSheetTitle',
+        mode: '#materialAssignmentMode',
+        date: '#materialAssignmentDate',
+        target: '#materialAssignmentProject',
+        lines: '#materialAssignmentLines',
+        importWrap: '#materialAssignmentImport',
+        bill: '#materialAssignmentPurchaseBill',
+        addWrap: '#materialAssignmentAddWrap',
+        add: '#addMaterialAssignmentLine',
+        import: '#materialAssignmentImportBill',
+        grandTotal: '#materialAssignmentGrandTotal',
+        totalLabel: '#materialAssignmentTotalLabel',
+        materialId: 'materialAssignmentMaterial',
+        quantityId: 'materialAssignmentQuantity',
+        rateId: 'materialAssignmentRate',
+        totalId: 'materialAssignmentTotal',
+        detailsId: 'materialAssignmentDetails',
+        helpId: 'materialStockHelp',
+      }
+    : {
+        form: '#orderMaterialForm',
+        sheet: '#orderMaterialSheet',
+        title: '#orderMaterialSheetTitle',
+        mode: '#orderMaterialMode',
+        date: '#orderMaterialDate',
+        target: '#orderMaterialOrder',
+        lines: '#orderMaterialLines',
+        importWrap: '#orderMaterialImport',
+        bill: '#orderMaterialPurchaseBill',
+        addWrap: '#orderMaterialAddWrap',
+        add: '#addOrderMaterialLine',
+        import: '#orderMaterialImportBill',
+        grandTotal: '#orderMaterialGrandTotal',
+        totalLabel: '#orderMaterialTotalLabel',
+        materialId: 'orderMaterialItem',
+        quantityId: 'orderMaterialQuantity',
+        rateId: 'orderMaterialRate',
+        totalId: 'orderMaterialTotal',
+        detailsId: 'orderMaterialDetails',
+        helpId: 'orderMaterialHelp',
+      };
+}
+function ensureMaterialBulkTotal(projectMode) {
+  const cfg = materialBulkConfig(projectMode),
+    form = $(cfg.form),
+    actions = $('.form-actions', form);
+  if ($(cfg.grandTotal)) return;
+  const total = document.createElement('div');
+  total.className = 'material-assignment-total';
+  total.innerHTML = `<span id="${cfg.totalLabel.slice(1)}">Total assigned material</span><b id="${cfg.grandTotal.slice(1)}">${money(0)}</b>`;
+  form.insertBefore(total, actions);
+}
+function materialAssignmentOptions(selected = '') {
+  return options(
+    state.materials,
+    (row) =>
+      `${row.name} - ${isConsumable(row) ? money(materialMetrics(row).stock) : `${qty(materialMetrics(row).stock)} ${row.unit}`} available`,
+    'Select material',
+  ).replace(`value="${selected}"`, `value="${selected}" selected`);
+}
+function purchaseBillLabel(row) {
+  const vendor = row.cash_supplier_name || supplier(row.supplier_id)?.name || 'Supplier';
+  return `${row.bill_number} - ${vendor} - ${date(row.bill_date)}`;
+}
+function purchaseBillOptions() {
+  return options(
+    state.purchaseBills.filter((row) => row.status === 'Posted' && purchaseLines(row.id).length),
+    purchaseBillLabel,
+    'Select purchase bill',
+  );
+}
+function materialBulkLine(projectMode, data = {}, primary = false) {
+  const cfg = materialBulkConfig(projectMode),
+    item = material(data.material_id),
+    pool = isConsumable(item),
+    entered =
+      data.entered ??
+      (pool ? Number(data.line_total ?? lineAmount(data.quantity, data.unit_cost)) : data.quantity),
+    line = document.createElement('div');
+  line.className = 'invoice-line material-bulk-line';
+  line.dataset.materialBulkLine = '';
+  if (data.import_rate) line.dataset.importRate = String(data.import_rate);
+  if (data.reference) line.dataset.reference = data.reference;
+  line.innerHTML = `<div class="invoice-line-head"><b>Assigned material</b><button class="remove-line" type="button" data-remove-material-line aria-label="Remove material">×</button></div><div class="invoice-line-grid"><label class="wide">Material *<select ${primary ? `id="${cfg.materialId}"` : ''} data-material-line-material required>${materialAssignmentOptions(data.material_id || '')}</select></label><label>Quantity *<input ${primary ? `id="${cfg.quantityId}"` : ''} data-material-line-quantity type="number" min="0.001" step="0.001" inputmode="decimal" value="${numberInputValue(entered)}" required><small ${primary ? `id="${cfg.helpId}"` : ''} data-material-line-help class="field-help"></small></label><label>Purchase cost per unit<input ${primary ? `id="${cfg.rateId}"` : ''} data-material-line-rate type="number" readonly></label><label class="wide">Total material cost<input ${primary ? `id="${cfg.totalId}"` : ''} data-material-line-total type="number" readonly></label><label class="wide">Details<textarea ${primary ? `id="${cfg.detailsId}"` : ''} data-material-line-details rows="2">${esc(data.details || '')}</textarea></label></div>`;
+  return line;
+}
+function materialBulkLineDraft(line) {
+  return {
+    material_id: $('[data-material-line-material]', line).value,
+    entered: $('[data-material-line-quantity]', line).value,
+    import_rate: line.dataset.importRate || null,
+    reference: line.dataset.reference || null,
+    details: $('[data-material-line-details]', line).value,
+  };
+}
+function refreshMaterialLineButtons(projectMode) {
+  const lines = $$('[data-material-bulk-line]', $(materialBulkConfig(projectMode).lines));
+  lines.forEach((line) =>
+    $('[data-remove-material-line]', line).classList.toggle('hidden', lines.length === 1),
+  );
+}
+function resetMaterialBulkLines(projectMode, rows = [{}]) {
+  const cfg = materialBulkConfig(projectMode),
+    wrap = $(cfg.lines);
+  wrap.innerHTML = '';
+  (rows.length ? rows : [{}]).forEach((row, index) =>
+    wrap.append(materialBulkLine(projectMode, row, index === 0)),
+  );
+  refreshMaterialLineButtons(projectMode);
+  $$('[data-material-bulk-line]', wrap).forEach((line) => updateMaterialBulkLine(projectMode, line));
+  window.MughalControls?.refresh();
+}
+function materialLineAvailable(projectMode, line, item) {
+  const cfg = materialBulkConfig(projectMode),
+    mode = $(cfg.mode).value,
+    targetId = $(cfg.target).value,
+    form = $(cfg.form),
+    existing = state.materialMovements.find((row) => row.id === form.dataset.editId),
+    measure = (row) => (isConsumable(item) ? movementValue(row) : Number(row.quantity || 0));
+  let available =
+    mode === 'return'
+      ? projectMode
+        ? projectReturnable(targetId, item.id)
+        : orderReturnable(targetId, item.id)
+      : materialMetrics(item).stock;
+  if (existing && existing.material_id === item.id) {
+    if (mode === 'return' && existing.movement_type.includes('return')) available += measure(existing);
+    else if (mode === 'assign' && existing.movement_type.includes('issue')) available += measure(existing);
+  }
+  return available;
+}
+function updateMaterialBulkTotal(projectMode) {
+  const cfg = materialBulkConfig(projectMode),
+    total = $$('[data-material-bulk-line]', $(cfg.lines)).reduce((sum, line) => {
+      const item = material($('[data-material-line-material]', line).value),
+        entered = Number($('[data-material-line-quantity]', line).value || 0);
+      if (!item || !(entered > 0)) return sum;
+      return (
+        sum +
+        (isConsumable(item)
+          ? entered
+          : entered * Number(line.dataset.importRate || materialMetrics(item).unitCost || 0))
+      );
+    }, 0);
+  $(cfg.grandTotal).textContent = money(total);
+}
+function updateMaterialBulkLine(projectMode, line) {
+  const cfg = materialBulkConfig(projectMode),
+    item = material($('[data-material-line-material]', line).value),
+    enteredText = $('[data-material-line-quantity]', line).value,
+    entered = Number(enteredText || 0),
+    pool = isConsumable(item),
+    rate = pool ? 1 : Number(line.dataset.importRate || materialMetrics(item || {}).unitCost || 0),
+    available = item ? materialLineAvailable(projectMode, line, item) : 0,
+    quantityLabel = $('[data-material-line-quantity]', line).closest('label');
+  quantityLabel.firstChild.nodeValue = pool ? 'Consumable amount *' : 'Quantity *';
+  $('[data-material-line-rate]', line).closest('label').classList.toggle('hidden', pool);
+  $('[data-material-line-total]', line).closest('label').classList.toggle('hidden', pool);
+  $('[data-material-line-rate]', line).value = item && !pool ? numberInputValue(rate) : '';
+  $('[data-material-line-total]', line).value =
+    item && enteredText !== '' && !pool ? numberInputValue(rate * entered) : '';
+  $('[data-material-line-help]', line).textContent = item
+    ? `${$(cfg.mode).value === 'return' ? 'Returnable from this job' : 'Available'}: ${pool ? money(available) : `${qty(available)} ${item.unit}`}${line.dataset.reference ? ` · ${line.dataset.reference}` : ''}`
+    : '';
+  updateMaterialBulkTotal(projectMode);
+}
+function setMaterialBulkMode(projectMode, { mode = 'assign', editing = false } = {}) {
+  const cfg = materialBulkConfig(projectMode),
+    bulk = mode === 'assign' && !editing;
+  $(cfg.importWrap).classList.toggle('hidden', !bulk);
+  $(cfg.addWrap).classList.toggle('hidden', !bulk);
+  $(cfg.totalLabel).textContent = mode === 'return' ? 'Total returned material' : 'Total assigned material';
+  const submit = $(cfg.form).querySelector('[type="submit"]');
+  submit.textContent = editing
+    ? 'Save movement'
+    : mode === 'return'
+      ? 'Return material'
+      : 'Assign all materials';
+}
+function openBulkMaterialAssignment(projectMode, mode = 'assign', id = '') {
+  const cfg = materialBulkConfig(projectMode),
+    r = state.materialMovements.find((row) => row.id === id);
+  mode = r ? (r.movement_type.includes('return') ? 'return' : 'assign') : mode;
+  const jobs = projectMode
+    ? r
+      ? [
+          ...new Map(
+            [...approvedProjects(), project(r.project_id)].filter(Boolean).map((row) => [row.id, row]),
+          ).values(),
+        ]
+      : approvedProjects()
+    : r
+      ? [
+          ...new Map(
+            [
+              ...state.walkInOrders.filter((row) => ['Pending', 'In Progress', 'Ready'].includes(row.status)),
+              walkInOrder(r.walk_in_order_id),
+            ]
+              .filter(Boolean)
+              .map((row) => [row.id, row]),
+          ).values(),
+        ]
+      : state.walkInOrders.filter((row) => ['Pending', 'In Progress', 'Ready'].includes(row.status));
+  if (!r && !jobs.length) {
+    toast(
+      projectMode
+        ? 'Approve an active project quote before assigning material.'
+        : 'Add an active order invoice first.',
+    );
+    return;
+  }
+  if (!state.materials.length) {
+    toast('Add materials and purchases in Purchasing first.');
+    return;
+  }
+  const form = $(cfg.form),
+    item = material(r?.material_id);
+  form.reset();
+  form.dataset.editId = r?.id || '';
+  $(cfg.mode).value = mode;
+  $(cfg.date).value = r?.movement_date || today();
+  $(cfg.target).innerHTML = options(
+    jobs,
+    projectMode ? projectLabel : orderLabel,
+    projectMode ? 'Select project - party' : 'Select order - customer',
+  );
+  $(cfg.target).value = r ? (projectMode ? r.project_id : r.walk_in_order_id) : '';
+  $(cfg.bill).innerHTML = purchaseBillOptions();
+  resetMaterialBulkLines(
+    projectMode,
+    r
+      ? [
+          {
+            material_id: r.material_id,
+            entered: isConsumable(item) ? movementValue(r) : r.quantity,
+            import_rate: isConsumable(item) ? null : r.unit_cost,
+            details: r.notes || '',
+          },
+        ]
+      : [{}],
+  );
+  setMaterialBulkMode(projectMode, { mode, editing: Boolean(r) });
+  $(cfg.title).textContent = r
+    ? `Edit ${mode === 'return' ? 'returned' : 'assigned'} material`
+    : mode === 'return'
+      ? 'Return material'
+      : 'Assign materials';
+  openSheet(cfg.sheet);
+}
+openMaterialAssignment = (mode = 'assign', id = '') => openBulkMaterialAssignment(true, mode, id);
+openOrderMaterial = (mode = 'assign', id = '') => openBulkMaterialAssignment(false, mode, id);
+
+function importPurchaseBillMaterials(projectMode) {
+  const cfg = materialBulkConfig(projectMode),
+    bill = purchaseBill($(cfg.bill).value);
+  if (!bill) {
+    toast('Select a purchase bill to import.');
+    return;
+  }
+  const lines = purchaseLines(bill.id);
+  if (!lines.length) {
+    toast('This purchase bill has no material items.');
+    return;
+  }
+  resetMaterialBulkLines(
+    projectMode,
+    lines.map((row) => {
+      const item = material(row.material_id),
+        pool = isConsumable(item);
+      return {
+        material_id: row.material_id,
+        entered: pool
+          ? Number(row.line_total ?? lineAmount(row.quantity, row.unit_cost))
+          : Number(row.quantity),
+        import_rate: pool ? null : Number(row.unit_cost),
+        reference: `From ${bill.bill_number}`,
+        details: row.details || '',
+      };
+    }),
+  );
+  toast(`${lines.length} bill item${lines.length === 1 ? '' : 's'} imported. Confirm or edit before saving.`);
+}
+function readMaterialBulkRows(projectMode) {
+  const cfg = materialBulkConfig(projectMode);
+  return $$('[data-material-bulk-line]', $(cfg.lines)).map((line) => {
+    const item = material($('[data-material-line-material]', line).value),
+      entered = Number($('[data-material-line-quantity]', line).value),
+      pool = isConsumable(item);
+    return {
+      item,
+      entered,
+      quantity: pool ? 1 : entered,
+      unit_cost: pool
+        ? entered
+        : Number(line.dataset.importRate || materialMetrics(item || {}).unitCost || 0),
+      notes: $('[data-material-line-details]', line).value.trim() || null,
+      reference: line.dataset.reference || null,
+      line,
+    };
+  });
+}
+function validateMaterialBulkRows(projectMode, rows) {
+  const cfg = materialBulkConfig(projectMode),
+    mode = $(cfg.mode).value;
+  if (!rows.length || rows.some((row) => !row.item || !(row.entered > 0)))
+    return 'Complete every material and quantity.';
+  const totals = new Map();
+  rows.forEach((row) => totals.set(row.item.id, (totals.get(row.item.id) || 0) + row.entered));
+  for (const [materialId, requested] of totals) {
+    const row = rows.find((item) => item.item.id === materialId),
+      available = materialLineAvailable(projectMode, row.line, row.item);
+    if (requested > available + 0.000001)
+      return `${mode === 'return' ? 'Only' : 'Available'} ${isConsumable(row.item) ? money(available) : `${qty(available)} ${row.item.unit}`} ${mode === 'return' ? 'can be returned.' : 'is available for'} ${row.item.name}.`;
+  }
+  return '';
+}
+async function saveMaterialBulkRows(projectMode, form, submitter) {
+  const cfg = materialBulkConfig(projectMode),
+    existing = state.materialMovements.find((row) => row.id === form.dataset.editId),
+    mode = $(cfg.mode).value,
+    rows = readMaterialBulkRows(projectMode),
+    message = validateMaterialBulkRows(projectMode, rows);
+  if (message) {
+    toast(message);
+    return;
+  }
+  const common = {
+    project_id: projectMode ? $(cfg.target).value : null,
+    walk_in_order_id: projectMode ? null : $(cfg.target).value,
+    movement_type: projectMode
+      ? mode === 'return'
+        ? 'project_return'
+        : 'project_issue'
+      : mode === 'return'
+        ? 'walk_in_return'
+        : 'walk_in_issue',
+    movement_date: $(cfg.date).value,
+  };
+  if (!common.project_id && !common.walk_in_order_id) {
+    toast(`Select the ${projectMode ? 'project' : 'order'}.`);
+    return;
+  }
+  await working(
+    existing
+      ? 'Updating material movement…'
+      : mode === 'return'
+        ? 'Returning material…'
+        : `Assigning ${rows.length} material${rows.length === 1 ? '' : 's'}…`,
+    submitter,
+    async () => {
+      if (existing || mode === 'return') {
+        const row = {
+            id: existing?.id || uid(),
+            material_id: rows[0].item.id,
+            ...common,
+            quantity: rows[0].quantity,
+            unit_cost: rows[0].unit_cost,
+            reference: rows[0].reference,
+            notes: rows[0].notes,
+            created_at: existing?.created_at || new Date().toISOString(),
+          },
+          saved = await store.save('material_movements', row, Boolean(existing));
+        if (cloud) await store.load();
+        else upsert(state.materialMovements, saved);
+      } else if (cloud) {
+        await store.rpc('assign_materials_bulk', {
+          p_business_id: state.businessId,
+          p_project_id: common.project_id,
+          p_walk_in_order_id: common.walk_in_order_id,
+          p_movement_date: common.movement_date,
+          p_items: rows.map((row) => ({
+            material_id: row.item.id,
+            quantity: row.quantity,
+            unit_cost: row.unit_cost,
+            reference: row.reference,
+            notes: row.notes,
+          })),
+        });
+        await store.load();
+      } else {
+        rows.forEach((item) =>
+          state.materialMovements.unshift({
+            id: uid(),
+            business_id: state.businessId,
+            material_id: item.item.id,
+            ...common,
+            quantity: item.quantity,
+            unit_cost: item.unit_cost,
+            reference: item.reference,
+            notes: item.notes,
+            created_at: new Date().toISOString(),
+          }),
+        );
+      }
+      store.persist();
+      closeSheets();
+      render();
+      toast(
+        existing
+          ? 'Material movement updated.'
+          : mode === 'return'
+            ? 'Material returned.'
+            : `${rows.length} material${rows.length === 1 ? '' : 's'} assigned.`,
+      );
+    },
+  );
+}
+
+for (const projectMode of [true, false]) {
+  ensureMaterialBulkTotal(projectMode);
+  const cfg = materialBulkConfig(projectMode);
+  $(cfg.add).addEventListener('click', () => {
+    const line = materialBulkLine(projectMode);
+    $(cfg.lines).append(line);
+    refreshMaterialLineButtons(projectMode);
+    updateMaterialBulkLine(projectMode, line);
+    window.MughalControls?.refresh();
+  });
+  $(cfg.import).addEventListener('click', () => importPurchaseBillMaterials(projectMode));
+  $(cfg.target).addEventListener('change', () =>
+    $$('[data-material-bulk-line]', $(cfg.lines)).forEach((line) =>
+      updateMaterialBulkLine(projectMode, line),
+    ),
+  );
+  $(cfg.lines).addEventListener('click', (event) => {
+    const remove = event.target.closest('[data-remove-material-line]');
+    if (!remove) return;
+    const removed = remove.closest('[data-material-bulk-line]'),
+      remaining = $$('[data-material-bulk-line]', $(cfg.lines))
+        .filter((line) => line !== removed)
+        .map(materialBulkLineDraft);
+    resetMaterialBulkLines(projectMode, remaining);
+  });
+  $(cfg.lines).addEventListener('change', (event) => {
+    const line = event.target.closest('[data-material-bulk-line]');
+    if (!line) return;
+    if (event.target.matches('[data-material-line-material]')) {
+      delete line.dataset.importRate;
+      delete line.dataset.reference;
+    }
+    updateMaterialBulkLine(projectMode, line);
+  });
+  $(cfg.lines).addEventListener('input', (event) => {
+    const line = event.target.closest('[data-material-bulk-line]');
+    if (line && event.target.matches('[data-material-line-quantity]'))
+      updateMaterialBulkLine(projectMode, line);
+  });
+}
+
+const baseOpenPurchaseMaterial = openPurchaseMaterial;
+openPurchaseMaterial = function (id = '') {
+  baseOpenPurchaseMaterial(id);
+  const r = material(id);
+  $('#purchaseMaterialOpeningRate').value = numberInputValue(r?.opening_rate);
+  $('#purchaseMaterialOpeningRateLabel').classList.toggle(
+    'hidden',
+    $('#purchaseMaterialTracking').value === 'consumable',
+  );
+};
+const baseOpenPurchase = openPurchase;
+openPurchase = function (mode = 'credit') {
+  baseOpenPurchase(mode);
+  const cash = mode === 'cash';
+  $('#cashPurchaseSupplierNameLabel').classList.toggle('hidden', !cash);
+  $('#cashPurchaseSupplierName').required = cash;
+};
+$('#purchaseMaterialTracking').addEventListener('change', () =>
+  $('#purchaseMaterialOpeningRateLabel').classList.toggle(
+    'hidden',
+    $('#purchaseMaterialTracking').value === 'consumable',
+  ),
+);
+
+document.addEventListener(
+  'click',
+  (event) => {
+    const edit = event.target.closest('#detailEdit');
+    if (
+      edit &&
+      [
+        'labourAssignment',
+        'materialAssignment',
+        'expenseCharge',
+        'orderExpense',
+        'orderMaterial',
+        'orderLabour',
+        'labourWage',
+        'bankingExpense',
+        'partnerDrawing',
+      ].includes(state.detail?.type)
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const { type, id } = state.detail;
+      closeSheets();
+      ({
+        labourAssignment: () => openLabourAssignment(id),
+        materialAssignment: () => openMaterialAssignment('assign', id),
+        expenseCharge: () => openExpenseCharge(id),
+        orderExpense: () => openOrderExpense(id),
+        orderMaterial: () => openOrderMaterial('assign', id),
+        orderLabour: () => openOrderLabour(id),
+        labourWage: () => openPayWages('', id),
+        bankingExpense: () => openBankingExpense(id),
+        partnerDrawing: () => openPartnerDrawing(id),
+      })[type]();
+      return;
+    }
+    const drawing = event.target.closest('[data-view-partner-drawing]');
+    if (drawing) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      viewPartnerDrawing(drawing.dataset.viewPartnerDrawing);
+      return;
+    }
+    if (event.target.closest('[data-action="add-partner-drawing"]')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openPartnerDrawing();
+    }
+  },
+  true,
+);
+
+document.addEventListener(
+  'submit',
+  async (event) => {
+    const form = event.target;
+    if (
+      ![
+        'labourAssignmentForm',
+        'materialAssignmentForm',
+        'expenseChargeForm',
+        'orderExpenseChargeForm',
+        'orderMaterialForm',
+        'orderLabourForm',
+        'payWagesForm',
+        'bankingExpenseForm',
+        'partnerDrawingForm',
+        'purchaseMaterialForm',
+        'purchaseForm',
+      ].includes(form.id)
+    )
+      return;
+    if (form.id === 'purchaseForm' && $('#purchaseMode').value !== 'cash') return;
+    if (form.id === 'payWagesForm' && !form.dataset.editId) return;
+    if (form.id === 'bankingExpenseForm' && !form.dataset.editId) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    try {
+      if (form.id === 'labourAssignmentForm' || form.id === 'orderLabourForm') {
+        const projectMode = form.id === 'labourAssignmentForm',
+          id = form.dataset.editId,
+          existing = state.labourAssignments.find((row) => row.id === id),
+          days = Number($(projectMode ? '#labourDayType' : '#orderLabourDay').value),
+          personId = $(projectMode ? '#labourAssignmentPerson' : '#orderLabourPerson').value,
+          worker = labourer(personId),
+          row = {
+            id: existing?.id || uid(),
+            labourer_id: personId,
+            project_id: projectMode ? $('#labourAssignmentProject').value : null,
+            walk_in_order_id: projectMode ? null : $('#orderLabourOrder').value,
+            assignment_date: $(projectMode ? '#labourAssignmentDate' : '#orderLabourDate').value,
+            days,
+            daily_rate: Number(worker?.daily_wage_rate || 0),
+            notes: $(projectMode ? '#labourAssignmentDetails' : '#orderLabourDetails').value.trim() || null,
+            created_at: existing?.created_at || new Date().toISOString(),
+          };
+        await working(
+          existing ? 'Updating labour assignment…' : 'Assigning labour…',
+          event.submitter,
+          async () => {
+            const saved = await store.save('labour_assignments', row, Boolean(existing));
+            if (cloud) await store.load();
+            else upsert(state.labourAssignments, { ...saved, amount: days * row.daily_rate });
+            store.persist();
+            closeSheets();
+            render();
+            toast(existing ? 'Labour assignment updated.' : 'Labour assigned.');
+          },
+        );
+        return;
+      }
+      if (form.id === 'materialAssignmentForm' || form.id === 'orderMaterialForm') {
+        await saveMaterialBulkRows(form.id === 'materialAssignmentForm', form, event.submitter);
+        return;
+      }
+      if (form.id === 'expenseChargeForm' || form.id === 'orderExpenseChargeForm') {
+        const projectMode = form.id === 'expenseChargeForm',
+          id = form.dataset.editId,
+          payload = {
+            p_business_id: state.businessId,
+            p_project_id: projectMode ? $('#expenseChargeProject').value : null,
+            p_walk_in_order_id: projectMode ? null : $('#orderExpenseOrder').value,
+            p_entry_date: $(projectMode ? '#expenseChargeDate' : '#orderExpenseDate').value,
+            p_expense_category_id: $(projectMode ? '#expenseChargeCategory' : '#orderExpenseCategory').value,
+            p_from_account_id: $(projectMode ? '#expenseChargeAccount' : '#orderExpenseAccount').value,
+            p_amount: Number($(projectMode ? '#expenseChargeAmount' : '#orderExpenseAmount').value),
+            p_notes: $(projectMode ? '#expenseChargeDetails' : '#orderExpenseDetails').value.trim() || null,
+          };
+        await working(id ? 'Updating expense…' : 'Saving expense…', event.submitter, async () => {
+          if (cloud) {
+            if (id)
+              await store.rpc('update_job_expense', {
+                p_entry_id: id,
+                p_entry_date: payload.p_entry_date,
+                p_expense_category_id: payload.p_expense_category_id,
+                p_from_account_id: payload.p_from_account_id,
+                p_amount: payload.p_amount,
+                p_notes: payload.p_notes,
+              });
+            else await store.rpc('record_job_expense', payload);
+            await store.load();
+          } else {
+            const list = projectMode ? state.entries : state.walkInEntries,
+              old = list.find((row) => row.id === id),
+              payment = state.payments.find((row) => row.id === old?.payment_id),
+              paymentId = payment?.id || uid(),
+              entry = {
+                id: old?.id || uid(),
+                project_id: payload.p_project_id,
+                walk_in_order_id: payload.p_walk_in_order_id,
+                entry_type: 'expense',
+                entry_date: payload.p_entry_date,
+                expense_category_id: payload.p_expense_category_id,
+                description: expenseCategory(payload.p_expense_category_id)?.name,
+                amount: payload.p_amount,
+                notes: payload.p_notes,
+                payment_id: paymentId,
+                created_at: old?.created_at || new Date().toISOString(),
+              };
+            upsert(list, entry);
+            upsert(state.payments, {
+              id: paymentId,
+              payment_type: 'expense',
+              payment_date: payload.p_entry_date,
+              from_account_id: payload.p_from_account_id,
+              project_id: payload.p_project_id,
+              walk_in_order_id: payload.p_walk_in_order_id,
+              description: entry.description,
+              amount: payload.p_amount,
+              reference: payload.p_expense_category_id,
+              notes: payload.p_notes,
+              created_at: payment?.created_at || new Date().toISOString(),
+            });
+          }
+          store.persist();
+          closeSheets();
+          render();
+          toast(id ? 'Expense updated.' : 'Expense saved and paid from account.');
+        });
+        return;
+      }
+      if (form.id === 'payWagesForm') {
+        const id = form.dataset.editId;
+        if (!id) return;
+        await working('Updating wage payment…', event.submitter, async () => {
+          if (cloud) {
+            await store.rpc('update_labour_wage_settlement', {
+              p_settlement_id: id,
+              p_settlement_date: $('#payWagesDate').value,
+              p_from_account_id: $('#payWagesAccount').value || null,
+              p_notes: $('#payWagesDetails').value.trim() || null,
+              p_amount: Number($('#payWagesAmount').value),
+            });
+            await store.load();
+          } else {
+            const row = state.labourWageSettlements.find((x) => x.id === id);
+            row.settlement_date = $('#payWagesDate').value;
+            row.gross_wages = Number($('#payWagesAmount').value);
+            row.notes = $('#payWagesDetails').value.trim() || null;
+          }
+          store.persist();
+          closeSheets();
+          render();
+          toast('Wage payment updated.');
+        });
+        return;
+      }
+      if (form.id === 'bankingExpenseForm') {
+        const id = form.dataset.editId;
+        if (!id) return;
+        await working('Updating overhead expense…', event.submitter, async () => {
+          const payload = {
+            p_payment_id: id,
+            p_payment_date: $('#bankingExpenseDate').value,
+            p_expense_category_id: $('#bankingExpenseCategory').value,
+            p_from_account_id: $('#bankingExpenseAccount').value,
+            p_amount: Number($('#bankingExpenseAmount').value),
+            p_notes: $('#bankingExpenseDetails').value.trim() || null,
+          };
+          if (cloud) {
+            await store.rpc('update_overhead_expense', payload);
+            await store.load();
+          } else
+            Object.assign(
+              state.payments.find((row) => row.id === id),
+              {
+                payment_date: payload.p_payment_date,
+                from_account_id: payload.p_from_account_id,
+                amount: payload.p_amount,
+                reference: payload.p_expense_category_id,
+                notes: payload.p_notes,
+              },
+            );
+          store.persist();
+          closeSheets();
+          render();
+          toast('Overhead expense updated.');
+        });
+        return;
+      }
+      if (form.id === 'partnerDrawingForm') {
+        const id = $('#partnerDrawingId').value,
+          payload = {
+            p_payment_id: id || null,
+            p_business_id: state.businessId,
+            p_payment_date: $('#partnerDrawingDate').value,
+            p_from_account_id: $('#partnerDrawingAccount').value,
+            p_amount: Number($('#partnerDrawingAmount').value),
+            p_notes: $('#partnerDrawingDetails').value.trim() || null,
+          };
+        await working(
+          id ? 'Updating partner drawing…' : 'Recording partner drawing…',
+          event.submitter,
+          async () => {
+            if (cloud) {
+              await store.rpc('save_partner_drawing', payload);
+              await store.load();
+            } else
+              upsert(state.payments, {
+                id: id || uid(),
+                payment_number: id
+                  ? state.payments.find((x) => x.id === id)?.payment_number
+                  : `MIT-${Date.now().toString().slice(-7)}`,
+                payment_type: 'partner_drawing',
+                payment_date: payload.p_payment_date,
+                from_account_id: payload.p_from_account_id,
+                description: `Partner drawing - ${partnerName()}`,
+                reference: partnerName(),
+                amount: payload.p_amount,
+                notes: payload.p_notes,
+                created_at: new Date().toISOString(),
+              });
+            store.persist();
+            closeSheets();
+            render();
+            toast(id ? 'Partner drawing updated.' : 'Partner drawing recorded.');
+          },
+        );
+        return;
+      }
+      if (form.id === 'purchaseMaterialForm') {
+        const existing = material($('#purchaseMaterialId').value),
+          tracking = $('#purchaseMaterialTracking').value,
+          row = {
+            id: existing?.id || $('#purchaseMaterialId').value,
+            name: $('#purchaseMaterialName').value.trim(),
+            sku: $('#purchaseMaterialCode').value,
+            tracking_type: tracking,
+            unit: tracking === 'consumable' ? 'piece' : $('#purchaseMaterialUnit').value,
+            opening_quantity: tracking === 'stock' ? Number($('#purchaseMaterialOpeningQty').value || 0) : 0,
+            opening_amount:
+              tracking === 'consumable' ? Number($('#purchaseMaterialOpeningAmount').value || 0) : 0,
+            opening_rate: tracking === 'stock' ? Number($('#purchaseMaterialOpeningRate').value || 0) : 0,
+            details: $('#purchaseMaterialDetails').value.trim() || null,
+            category: existing?.category || null,
+            reorder_level: Number(existing?.reorder_level || 0),
+            default_unit_cost: Number(existing?.default_unit_cost || 0),
+            active: true,
+            created_at: existing?.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        await working(existing ? 'Updating material…' : 'Saving material…', event.submitter, async () => {
+          upsert(state.materials, await store.save('materials', row, Boolean(existing)));
+          closeSheets();
+          render();
+          toast(existing ? 'Material updated.' : 'Material added.');
+        });
+        return;
+      }
+      if (form.id === 'purchaseForm') {
+        const items = readPurchaseLines(),
+          discount = Number($('#purchaseDiscount').value || 0),
+          subtotal = items.reduce((sum, line) => sum + lineAmount(line.quantity, line.unit_cost), 0),
+          total = subtotal - discount,
+          supplierId = state.suppliers.find((row) => row.name === 'Cash Purchase Supplier')?.id;
+        if (
+          items.some((line) => !line.material_id || !(line.quantity > 0) || !(line.unit_cost > 0)) ||
+          total <= 0
+        ) {
+          toast('Complete every material and amount.');
+          return;
+        }
+        await working('Saving and paying cash purchase…', event.submitter, async () => {
+          let billId;
+          if (cloud) {
+            billId = await store.rpc('create_cash_purchase_mobile', {
+              p_bill_date: $('#purchaseDate').value,
+              p_notes: $('#purchaseDetails').value.trim() || null,
+              p_discount: discount,
+              p_items: items,
+              p_from_account_id: $('#cashPurchaseAccount').value,
+              p_cash_supplier_name: $('#cashPurchaseSupplierName').value.trim() || null,
+            });
+            await store.load();
+          } else {
+            billId = uid();
+            state.purchaseBills.unshift({
+              id: billId,
+              supplier_id: supplierId,
+              bill_number: `MIPB-${Date.now().toString().slice(-7)}`,
+              bill_date: $('#purchaseDate').value,
+              subtotal,
+              discount,
+              total_amount: total,
+              amount_paid: total,
+              payment_status: 'Paid',
+              status: 'Posted',
+              cash_supplier_name: $('#cashPurchaseSupplierName').value.trim() || null,
+              notes: $('#purchaseDetails').value.trim() || null,
+              created_at: new Date().toISOString(),
+            });
+            items.forEach((line) =>
+              state.materialMovements.unshift({
+                id: uid(),
+                material_id: line.material_id,
+                movement_type: 'purchase',
+                movement_date: $('#purchaseDate').value,
+                quantity: line.quantity,
+                unit_cost: line.unit_cost,
+                supplier_id: supplierId,
+                supplier_name: $('#cashPurchaseSupplierName').value.trim() || 'Cash Purchase Supplier',
+                purchase_bill_id: billId,
+                created_at: new Date().toISOString(),
+              }),
+            );
+          }
+          store.persist();
+          closeSheets();
+          render();
+          viewPurchase(billId);
+          toast('Cash purchase saved and paid.');
+        });
+      }
+    } catch {}
+  },
+  true,
+);
+async function boot() {
+  if (cloud && !state.token) {
+    const saved = JSON.parse(localStorage.getItem('mi_mobile_session') || 'null');
+    if (!saved) {
+      $('#loginScreen').classList.remove('hidden');
+      return;
+    }
+    state.token = saved.token;
+    state.refreshToken = saved.refreshToken || null;
+    state.expiresAt = Number(saved.expiresAt) || 0;
+    state.userId = saved.userId;
+  }
+  try {
+    await store.load();
+    $('#loginScreen').classList.add('hidden');
+    $('#app').classList.remove('hidden');
+    render();
+    tab('projectsHub');
+  } catch (error) {
+    if (cloud) {
+      logout(false);
+      $('#loginError').textContent = error.message;
+      $('#loginError').classList.remove('hidden');
+    } else toast(error.message);
+  }
+}
+makeDetailsOptional();
+installOperationalEnhancements();
+blankDefaultNumberFields();
+boot();

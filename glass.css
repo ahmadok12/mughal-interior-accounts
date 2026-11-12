@@ -1,0 +1,741 @@
+/* ==========================================================================
+   Mughal Glass — screen theme for Mughal Interior Accounts
+   Soft frosted emerald-and-gold glass on a plain ivory ground, in a rounded typeface.
+   Loaded after every other stylesheet. Screen only: printing, PDF documents
+   (.pdf-document) and exported reports (.report-print-document) keep their
+   own print styling.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Nunito';
+  src: url('assets/fonts/nunito.woff2') format('woff2');
+  font-weight: 200 1000;
+  font-display: swap;
+}
+
+@media screen {
+  :root {
+    --mg-emerald-950: #0c271e;
+    --mg-emerald-900: #113328;
+    --mg-emerald-800: #174133;
+    --mg-emerald-700: #1f4f3e;
+    --mg-emerald-600: #2a6450;
+    --mg-emerald-400: #5b9a7c;
+    --mg-gold-700: #7d5f1c;
+    --mg-gold-500: #c9a24a;
+    --mg-gold-300: #e8d39a;
+    --mg-ivory: #f3efe4;
+    --mg-ink: #132019;
+    --mg-ink-2: #34443c;
+    --mg-muted: #56655d;
+    --mg-hair: rgba(17, 51, 40, 0.09);
+    --mg-glass: rgba(255, 255, 255, 0.68);
+    --mg-glass-strong: rgba(255, 255, 255, 0.8);
+    --mg-glass-edge: rgba(255, 255, 255, 0.78);
+    --mg-blur: blur(18px) saturate(150%);
+    --mg-shadow: 0 14px 30px -22px rgba(12, 39, 30, 0.38), 0 1px 3px -1px rgba(12, 39, 30, 0.08);
+    --mg-shadow-lift: 0 26px 50px -26px rgba(12, 39, 30, 0.6), 0 4px 10px -4px rgba(12, 39, 30, 0.16);
+    --mg-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --mg-sans: 'Nunito', 'SF Pro Rounded', 'Segoe UI', system-ui, sans-serif;
+    --mg-serif: var(--mg-sans); /* titles use the same rounded face, heavier */
+    color: var(--mg-ink);
+    background: var(--mg-ivory);
+  }
+
+  /* ---------- Ground: plain, calm ivory ---------- */
+  html {
+    background: var(--mg-ivory);
+  }
+  body {
+    background: transparent;
+    font-family: var(--mg-sans);
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--mg-ink);
+    caret-color: var(--mg-emerald-600);
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(180deg, #f7f5ef 0%, #f0ede5 100%);
+  }
+  .app,
+  .login-screen {
+    background: transparent;
+  }
+
+  /* ---------- Browser surfaces ---------- */
+  ::selection {
+    background: rgba(201, 162, 74, 0.38);
+    color: var(--mg-emerald-950);
+  }
+  :focus-visible {
+    outline: 3px solid var(--mg-gold-500);
+    outline-offset: 2px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(31, 79, 62, 0.35) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(31, 79, 62, 0.3);
+    border-radius: 8px;
+  }
+  .record-side strong,
+  .record-id,
+  .detail-amount,
+  .detail-row b,
+  .totals-card,
+  .report-table td,
+  .wage-balance dd,
+  .order-line-row strong {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Top bar: tinted glass keeps each section's colour ---------- */
+  .topbar {
+    height: calc(80px + env(safe-area-inset-top, 0px));
+    border-radius: 0 0 26px 26px;
+    background: color-mix(in srgb, var(--screen-color) 84%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow:
+      inset 0 -1px 0 rgba(232, 211, 154, 0.28),
+      0 14px 30px -18px rgba(12, 39, 30, 0.55);
+  }
+  /* Reports used purple and blue headers; a bronze-gold family keeps them distinct but on-brand. */
+  .topbar[data-screen='reports'],
+  .topbar[data-screen^='report-'] {
+    --screen-color: #6a5222;
+  }
+  .brand-avatar {
+    border: 2px solid rgba(232, 211, 154, 0.9);
+    box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.35);
+  }
+  .topbar > div span {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .topbar > div b {
+    font-family: var(--mg-serif);
+    font-size: 21px;
+    font-weight: 800;
+    letter-spacing: -0.005em;
+  }
+  .topbar .avatar {
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    color: #fff;
+    box-shadow: none;
+  }
+
+  /* ---------- Page heads: the heading speaks for itself ---------- */
+  .page-head .kicker,
+  .sheet-head .kicker,
+  .login-card .kicker,
+  .report-page-head .kicker {
+    display: none;
+  }
+  .page-head {
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .page-head h1 {
+    font-family: var(--mg-serif);
+    font-size: 31px;
+    line-height: 1.08;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    color: var(--mg-emerald-900);
+    text-wrap: balance;
+  }
+  .back {
+    background: var(--mg-glass);
+    -webkit-backdrop-filter: var(--mg-blur);
+    backdrop-filter: var(--mg-blur);
+    border: 1px solid var(--mg-glass-edge);
+    color: var(--mg-emerald-800);
+    box-shadow: var(--mg-shadow);
+  }
+
+  /* ---------- Buttons ---------- */
+  .button {
+    border-radius: 16px;
+    font-weight: 700;
+    letter-spacing: 0;
+    transition:
+      transform 160ms var(--mg-ease),
+      box-shadow 220ms var(--mg-ease),
+      background-color 220ms var(--mg-ease);
+  }
+  .button.primary,
+  .button:not(.secondary):not(.whatsapp-button) {
+    background: linear-gradient(180deg, var(--mg-emerald-600), var(--mg-emerald-800));
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #fff;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 14px 26px -16px rgba(12, 39, 30, 0.85);
+  }
+  .button.secondary {
+    background: var(--mg-glass-strong);
+    -webkit-backdrop-filter: var(--mg-blur);
+    backdrop-filter: var(--mg-blur);
+    border: 1px solid rgba(31, 79, 62, 0.16);
+    color: var(--mg-emerald-800);
+    box-shadow: var(--mg-shadow);
+  }
+  .button:active {
+    transform: translateY(1px) scale(0.99);
+  }
+  .button:disabled,
+  .button[disabled] {
+    opacity: 0.55;
+    box-shadow: none;
+  }
+  .whatsapp-button {
+    border-radius: 16px;
+    box-shadow: 0 14px 26px -16px rgba(15, 110, 60, 0.8);
+  }
+
+  /* ---------- Launcher tiles ---------- */
+  .action-grid {
+    gap: 12px;
+  }
+  .action-grid > button {
+    border-radius: 24px;
+    background: var(--mg-glass);
+    -webkit-backdrop-filter: var(--mg-blur);
+    backdrop-filter: var(--mg-blur);
+    border: 1px solid var(--mg-glass-edge);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      var(--mg-shadow);
+    transition:
+      transform 220ms var(--mg-ease),
+      box-shadow 220ms var(--mg-ease);
+  }
+  .action-grid > button:active {
+    transform: scale(0.98);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 8px 18px -14px rgba(12, 39, 30, 0.5);
+  }
+  .action-grid b {
+    color: var(--mg-ink);
+    font-weight: 750;
+    letter-spacing: -0.012em;
+  }
+  .action-grid small {
+    color: var(--mg-muted);
+  }
+  .action-icon {
+    border-radius: 16px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      0 0 0 1px rgba(255, 255, 255, 0.6);
+  }
+
+  /* ---------- Search ---------- */
+  .search {
+    border-radius: 18px;
+    background: var(--mg-glass-strong);
+    -webkit-backdrop-filter: var(--mg-blur);
+    backdrop-filter: var(--mg-blur);
+    border: 1px solid var(--mg-glass-edge);
+    box-shadow: var(--mg-shadow);
+  }
+  .search:focus-within {
+    border-color: rgba(201, 162, 74, 0.7);
+    box-shadow:
+      0 0 0 4px rgba(201, 162, 74, 0.2),
+      var(--mg-shadow);
+  }
+  .search span {
+    color: var(--mg-emerald-600);
+  }
+  .search input::placeholder {
+    color: #6a776f;
+  }
+
+  /* ---------- Record lists: one glass panel, hairline rows ---------- */
+  .record-list {
+    border-radius: 24px;
+    background: var(--mg-glass);
+    -webkit-backdrop-filter: var(--mg-blur);
+    backdrop-filter: var(--mg-blur);
+    border: 1px solid var(--mg-glass-edge);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      var(--mg-shadow);
+  }
+  .record-card {
+    background: transparent;
+    border-color: var(--mg-hair);
+  }
+  .record-card h3 {
+    color: var(--mg-ink);
+    font-weight: 750;
+    letter-spacing: -0.012em;
+  }
+  .record-id {
+    color: var(--mg-gold-700);
+    font-weight: 750;
+    letter-spacing: 0.05em;
+  }
+  .record-meta,
+  .record-meta span {
+    color: var(--mg-muted);
+  }
+  .record-side strong {
+    color: var(--mg-emerald-900);
+  }
+  .record-card .view-button {
+    background: rgba(23, 65, 51, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border-radius: 999px;
+    box-shadow: 0 10px 18px -12px rgba(12, 39, 30, 0.9);
+  }
+  .status {
+    border-radius: 999px;
+    border: 1px solid rgba(31, 79, 62, 0.14);
+    background: rgba(91, 154, 124, 0.16);
+    color: var(--mg-emerald-700);
+    font-weight: 700;
+  }
+  .status.pending {
+    background: rgba(201, 162, 74, 0.2);
+    border-color: rgba(201, 162, 74, 0.38);
+    color: var(--mg-gold-700);
+  }
+  .status.closed {
+    background: rgba(52, 68, 60, 0.1);
+    color: var(--mg-ink-2);
+  }
+  .empty {
+    color: var(--mg-muted);
+  }
+  .empty b {
+    font-family: var(--mg-serif);
+    color: var(--mg-emerald-900);
+    font-weight: 800;
+  }
+
+  /* ---------- Segmented controls & tabs ---------- */
+  .segmented,
+  #reportsView .report-scope {
+    background: rgba(255, 255, 255, 0.42);
+    -webkit-backdrop-filter: var(--mg-blur);
+    backdrop-filter: var(--mg-blur);
+    border: 1px solid var(--mg-glass-edge);
+    border-radius: 18px;
+    box-shadow: inset 0 1px 2px rgba(12, 39, 30, 0.06);
+  }
+  .segmented button,
+  #reportsView .report-scope button {
+    color: var(--mg-ink-2);
+    border-radius: 14px;
+    transition: background-color 220ms var(--mg-ease), color 220ms var(--mg-ease);
+  }
+  .segmented button.active,
+  #reportsView .report-scope button.active {
+    background: #fff;
+    color: var(--mg-emerald-900);
+    box-shadow: 0 6px 14px -8px rgba(12, 39, 30, 0.45);
+  }
+
+  /* ---------- Floating glass navigation ---------- */
+  .bottom-nav {
+    inset: auto 10px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-radius: 30px;
+    background: rgba(255, 255, 255, 0.5);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    backdrop-filter: blur(24px) saturate(170%);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 22px 44px -22px rgba(12, 39, 30, 0.6),
+      0 3px 8px -4px rgba(12, 39, 30, 0.2);
+  }
+  .bottom-nav button {
+    color: #4b5a52;
+    border-radius: 24px;
+    transition: background-color 260ms var(--mg-ease), color 260ms var(--mg-ease);
+  }
+  .bottom-nav button b {
+    font-weight: 650;
+  }
+  .bottom-nav button.active {
+    background: linear-gradient(180deg, var(--mg-emerald-600), var(--mg-emerald-800));
+    color: #fff;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 10px 18px -10px rgba(12, 39, 30, 0.85);
+  }
+  .bottom-nav button.active .ui-icon {
+    color: var(--mg-gold-300);
+  }
+
+  /* ---------- Sheets (forms & details) ---------- */
+  .backdrop {
+    background: rgba(12, 39, 30, 0.3);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .sheet {
+    background: rgba(247, 244, 236, 0.84);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    backdrop-filter: blur(28px) saturate(160%);
+    border-top: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 30px 30px 0 0;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 -28px 60px -20px rgba(12, 39, 30, 0.45);
+  }
+  .sheet::before {
+    content: '';
+    display: block;
+    width: 42px;
+    height: 5px;
+    margin: -9px auto 12px;
+    border-radius: 5px;
+    background: rgba(17, 51, 40, 0.18);
+  }
+  .sheet-head.sticky {
+    background: rgba(247, 244, 236, 0.9);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+  }
+  .sheet-head h2 {
+    font-family: var(--mg-serif);
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    color: var(--mg-emerald-900);
+  }
+  .edit-top {
+    background: linear-gradient(180deg, var(--mg-emerald-600), var(--mg-emerald-800));
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 10px 18px -12px rgba(12, 39, 30, 0.85);
+  }
+  .sheet-head [data-close],
+  .head-actions > button:last-child {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(31, 79, 62, 0.12);
+    color: var(--mg-emerald-900);
+  }
+
+  /* The one authored motion: sheets rise and come into focus. */
+  @keyframes mg-sheet-in {
+    from {
+      transform: translateY(32px);
+      opacity: 0.35;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  @keyframes mg-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  .sheet:not(.hidden) {
+    animation: mg-sheet-in 460ms var(--mg-ease);
+  }
+  .backdrop:not(.hidden) {
+    animation: mg-fade 300ms var(--mg-ease);
+  }
+
+  /* ---------- Forms ---------- */
+  .form label,
+  .login-card label {
+    color: var(--mg-ink-2);
+    font-size: 12.5px;
+    letter-spacing: 0.005em;
+  }
+  .form input,
+  .form select,
+  .form textarea,
+  .login-card input,
+  #reportsView .report-filters input,
+  #reportsView .report-filters select,
+  .search-select-trigger {
+    background: rgba(255, 255, 255, 0.76);
+    border: 1px solid rgba(31, 79, 62, 0.15);
+    border-radius: 15px;
+    color: var(--mg-ink);
+    box-shadow: inset 0 1px 2px rgba(12, 39, 30, 0.04);
+    transition: border-color 200ms var(--mg-ease), box-shadow 200ms var(--mg-ease);
+  }
+  .form input:focus,
+  .form select:focus,
+  .form textarea:focus,
+  .login-card input:focus,
+  #reportsView .report-filters input:focus,
+  #reportsView .report-filters select:focus,
+  .search-select-trigger:focus-visible {
+    outline: 0;
+    border-color: var(--mg-gold-500);
+    box-shadow: 0 0 0 4px rgba(201, 162, 74, 0.24);
+  }
+  .form input[readonly] {
+    background: rgba(31, 79, 62, 0.07);
+    color: var(--mg-muted);
+    border-color: transparent;
+  }
+  .form-actions {
+    background: transparent;
+  }
+  .note,
+  .field-help {
+    color: var(--mg-muted);
+  }
+
+  /* ---------- Details ---------- */
+  .detail-card:not(.pdf-document) {
+    border-radius: 24px;
+    background: var(--mg-glass-strong);
+    border: 1px solid var(--mg-glass-edge);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      var(--mg-shadow);
+    overflow: hidden;
+  }
+  .detail-card:not(.pdf-document) .detail-hero {
+    position: relative;
+    background:
+      radial-gradient(90% 120% at 100% 0%, rgba(201, 162, 74, 0.32), transparent 60%),
+      linear-gradient(160deg, var(--mg-emerald-700), var(--mg-emerald-950));
+    color: #fff;
+    border-bottom: 1px solid rgba(232, 211, 154, 0.35);
+  }
+  .detail-card:not(.pdf-document) .detail-hero h3 {
+    font-family: var(--mg-serif);
+    font-weight: 800;
+    letter-spacing: -0.015em;
+  }
+  .detail-card:not(.pdf-document) .detail-hero p {
+    color: var(--mg-gold-300);
+    letter-spacing: 0.06em;
+  }
+  .detail-card:not(.pdf-document) .detail-row {
+    border-color: var(--mg-hair);
+  }
+  .detail-card:not(.pdf-document) .detail-row span {
+    color: var(--mg-muted);
+  }
+  .detail-card:not(.pdf-document) .detail-row b {
+    color: var(--mg-ink);
+  }
+  .danger-zone {
+    border-radius: 22px;
+    background: rgba(255, 244, 244, 0.7);
+    -webkit-backdrop-filter: var(--mg-blur);
+    backdrop-filter: var(--mg-blur);
+    border: 1px solid rgba(199, 68, 80, 0.22);
+  }
+  .totals-card,
+  .material-import,
+  .wage-balance,
+  .transfer-direction {
+    background: var(--mg-glass-strong);
+    border: 1px solid var(--mg-glass-edge);
+    border-radius: 20px;
+    box-shadow: var(--mg-shadow);
+  }
+
+  /* ---------- Reports (on screen only; exported PDFs are untouched) ---------- */
+  #reportsView .report-action-grid > button b {
+    font-size: 15px;
+  }
+  #reportsView .report-table-wrap {
+    border-radius: 22px;
+    background: var(--mg-glass-strong);
+    -webkit-backdrop-filter: var(--mg-blur);
+    backdrop-filter: var(--mg-blur);
+    border: 1px solid var(--mg-glass-edge);
+    box-shadow: var(--mg-shadow);
+  }
+  #reportsView .report-table th {
+    background: var(--mg-emerald-800);
+    color: var(--mg-gold-300);
+    letter-spacing: 0.06em;
+  }
+  #reportsView .report-table td {
+    border-color: var(--mg-hair);
+  }
+  #reportsView .report-table td small {
+    color: var(--mg-muted);
+  }
+  #reportsView .report-filters label {
+    color: var(--mg-ink-2);
+  }
+
+  /* ---------- Selection sheet (searchable dropdowns) ---------- */
+  .selection-dialog {
+    background: rgba(247, 244, 236, 0.9);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+  }
+  .selection-dialog::backdrop {
+    background: rgba(12, 39, 30, 0.3);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .selection-head h2 {
+    font-family: var(--mg-serif);
+    font-weight: 800;
+    color: var(--mg-emerald-900);
+  }
+  .selection-option {
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(31, 79, 62, 0.12);
+  }
+  .selection-option[aria-pressed='true'] {
+    background: rgba(91, 154, 124, 0.18);
+    border-color: var(--mg-emerald-400);
+    color: var(--mg-emerald-800);
+  }
+
+  /* ---------- Toast ---------- */
+  .toast {
+    background: rgba(17, 51, 40, 0.86);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(232, 211, 154, 0.3);
+    color: #fff;
+    border-radius: 18px;
+  }
+
+  /* ---------- Sign-in ---------- */
+  .login-card {
+    border-radius: 30px;
+    background: rgba(255, 255, 255, 0.55);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      var(--mg-shadow-lift);
+  }
+  .login-card h1 {
+    font-family: var(--mg-serif);
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    color: var(--mg-emerald-900);
+  }
+  .login-card .subtle {
+    color: var(--mg-muted);
+  }
+
+
+  /* ---------- Type scale: rounded type needs a little more size to read comfortably ----------
+     Screen UI only. Printed and exported documents keep their own sizes. */
+  .topbar > div span { font-size: 12.5px; }
+  .page-head h1 { font-size: 30px; }
+  .section-title h2 { font-size: 17px; }
+  .section-title span { font-size: 13px; }
+  .action-grid b { font-size: 16px; }
+  .action-grid small { font-size: 13px; line-height: 1.35; }
+  #reportsView .report-action-grid > button b { font-size: 15.5px; }
+  #reportsView .report-action-grid > button small { font-size: 12.5px; }
+  .button { font-size: 15px; }
+  .search input { font-size: 15px; }
+  .record-card h3 { font-size: 16px; }
+  .record-id { font-size: 11.5px; }
+  .record-meta span { font-size: 12.5px; }
+  .record-side strong { font-size: 15px; }
+  .record-card .view-button { font-size: 13px; }
+  .status { font-size: 11px; }
+  .segmented button { font-size: 13.5px; }
+  .record-total { font-size: 14px; }
+  .field-help { font-size: 12px; }
+  .inline-badge { font-size: 11px; }
+  .invoice-lines-head b,
+  .invoice-line-head b { font-size: 14px; }
+  .mini-dark { font-size: 12.5px; }
+  .invoice-line label { font-size: 12px; }
+  .material-import > div b,
+  .material-assignment-total span,
+  .totals-card > span { font-size: 13.5px; }
+  .totals-card .grand-total { font-size: 16px; }
+  .empty { font-size: 14px; }
+  .empty b { font-size: 17px; }
+  .bottom-nav button { font-size: 10.5px; }
+  .wage-line b,
+  .wage-line strong { font-size: 14px; }
+  .wage-line small { font-size: 12px; }
+  .wage-balance dt { font-size: 14px; }
+  .sheet-head h2 { font-size: 25px; }
+  .edit-top { font-size: 13.5px; }
+  .form label,
+  .login-card label { font-size: 13.5px; }
+  .detail-card:not(.pdf-document) .detail-hero p { font-size: 11px; }
+  .detail-card:not(.pdf-document) .detail-row span { font-size: 13px; }
+  .detail-card:not(.pdf-document) .detail-row b { font-size: 14px; }
+  .scope-item small,
+  .danger-zone span { font-size: 12px; }
+  .delete-button { font-size: 13px; }
+  .note { font-size: 12.5px; }
+  .toast { font-size: 14px; }
+  .error { font-size: 13px; }
+  .login-card .subtle { font-size: 14.5px; }
+  .search-select-trigger { font-size: 15px; }
+  #reportsView .report-scope button { font-size: 13px; }
+  #reportsView .report-filters label { font-size: 12.5px; }
+  #reportsView .report-filters select,
+  #reportsView .report-filters input { font-size: 14px; }
+  #reportsView .report-tools .button { font-size: 13.5px; }
+  #reportsView .report-table { font-size: 13.5px; }
+  #reportsView .report-table th { font-size: 11.5px; }
+  #reportsView .report-table td { font-size: 13.5px; }
+  #reportsView .report-table td b,
+  #reportsView .report-table .number { font-size: 14px; }
+  #reportsView .report-table td small,
+  #reportsView .report-section-note,
+  #reportsView .report-empty span { font-size: 12.5px; }
+
+  /* Printed and exported documents keep their original type. */
+  .pdf-document,
+  .report-print-document {
+    font-family: Inter, 'SF Pro Display', 'Segoe UI', Arial, sans-serif;
+    font-weight: 400;
+    letter-spacing: -0.012em;
+    -webkit-font-smoothing: auto;
+  }
+
+  /* Without backdrop blur, glass becomes a calm opaque surface. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .action-grid > button,
+    .record-list,
+    .search,
+    .bottom-nav,
+    #reportsView .report-table-wrap {
+      background: rgba(255, 255, 255, 0.9);
+    }
+    .sheet,
+    .selection-dialog {
+      background: #f7f4ec;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sheet:not(.hidden),
+    .backdrop:not(.hidden) {
+      animation: none;
+    }
+  }
+}

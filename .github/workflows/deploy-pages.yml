@@ -1,0 +1,60 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm ci
+        working-directory: tests
+      - run: npm test
+        working-directory: tests
+
+  deploy:
+    # Only publish from main, and only after every test passes.
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Collect app files only
+        # SQL, tests, docs and workflow files are never published to the website.
+        run: |
+          mkdir _site
+          cp index.html offline.html manifest.webmanifest sw.js config.js _site/
+          cp app-mobile.js reports-mobile.js mobile-controls.js pwa.js _site/
+          cp mobile.css reports-mobile.css mobile-controls.css print-branding.css pwa.css glass.css _site/
+          cp -r assets _site/
+          find _site -type f | sort
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
