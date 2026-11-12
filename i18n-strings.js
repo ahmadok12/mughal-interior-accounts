@@ -1,7 +1,6 @@
 /* Mughal Interior — translations. One line per phrase: English | اردو | Roman Urdu.
    Matching ignores letter case, a trailing " *" and a leading "+ ". Names, amounts and dates are never listed. */
 window.MUGHAL_I18N_STRINGS = `
-Mughal Interior | مغل انٹیریئر | Mughal Interior
 Welcome back | خوش آمدید | Khush aamdeed
 Sign in to manage your business. | اپنا کاروبار سنبھالنے کے لیے سائن اِن کریں۔ | Apna karobar sambhalne ke liye sign in karein.
 Email | ای میل | Email
@@ -210,8 +209,8 @@ Select supplier | سپلائر منتخب کریں | Supplier chunein
 Select material | میٹیریل منتخب کریں | Material chunein
 Labour person | لیبر | Labour
 Select labour person | لیبر منتخب کریں | Labour chunein
-Bank / cash account | بینک / کیش اکاؤنٹ | Bank / cash account
-Select bank / cash account | بینک / کیش اکاؤنٹ منتخب کریں | Bank / cash account chunein
+Bank / cash account | بینک، کیش اکاؤنٹ | Bank / cash account
+Select bank / cash account | بینک، کیش اکاؤنٹ منتخب کریں | Bank / cash account chunein
 All Dates | سب تاریخیں | Sab dates
 Download PDF | پی ڈی ایف | PDF
 Share on WhatsApp | واٹس ایپ | WhatsApp
@@ -358,8 +357,8 @@ Purchase items | خریداری آئٹمز | Khareedari items
 Add trackable stock and consumables | تعداد والا اسٹاک اور رقم والا میٹیریل ڈالیں | Tadaad wala stock aur raqam wala material daalein
 ✎ Details | ✎ تفصیل | ✎ Tafseel
 Purchase details | خریداری کی تفصیل | Khareedari ki tafseel
-Cash / bank account | کیش / بینک اکاؤنٹ | Cash / bank account
-Select cash / bank account | کیش / بینک اکاؤنٹ منتخب کریں | Cash / bank account chunein
+Cash / bank account | کیش، بینک اکاؤنٹ | Cash / bank account
+Select cash / bank account | کیش، بینک اکاؤنٹ منتخب کریں | Cash / bank account chunein
 Save purchase | خریداری محفوظ کریں | Khareedari save karein
 The payment is applied to this supplier's oldest outstanding purchases first. | ادائیگی پہلے اس سپلائر کی سب سے پرانی باقی خریداری میں لگے گی۔ | Payment pehle is supplier ki sab se purani baqi khareedari mein lagegi.
 Weekly payroll | ہفتہ وار اجرت | Hafta-waar ujrat
@@ -478,14 +477,14 @@ All labour persons | تمام لیبر | Tamaam labour
 Select account | اکاؤنٹ منتخب کریں | Account chunein
 No profit data | منافع کا کوئی ڈیٹا نہیں | Munafe ka koi data nahin
 No matching approved projects or orders. | کوئی منظور شدہ پراجیکٹ یا آرڈر نہیں ملا۔ | Koi manzoor shuda project ya order nahin mila.
-Customer / Job | کسٹمر / کام | Customer / kaam
+Customer / Job | کسٹمر، کام | Customer / kaam
 Invoiced | انوائس شدہ | Invoice shuda
 Receipts | وصولیاں | Wusooliyan
 Balance | بیلنس | Balance
 Total customer statement | کل کسٹمر کھاتہ | Kul customer khata
 No supplier data | سپلائر کا کوئی ڈیٹا نہیں | Supplier ka koi data nahin
 No supplier activity matches these filters. | ان فلٹرز میں سپلائر کی کوئی سرگرمی نہیں۔ | In filters mein supplier ki koi sargarmi nahin.
-Project / order | پراجیکٹ / آرڈر | Project / order
+Project / order | پراجیکٹ، آرڈر | Project / order
 Invoice | انوائس | Invoice
 Received | وصول شدہ | Wusool shuda
 Total receivables | کل قابلِ وصول | Kul qabil-e-wusool
@@ -556,7 +555,7 @@ Customer | کسٹمر | Customer
 Daily wage | روزانہ اجرت | Rozana ujrat
 Dates | تاریخیں | Tareekhein
 Days | دن | Din
-Description / reference | تفصیل / حوالہ | Tafseel / hawala
+Description / reference | تفصیل، حوالہ | Tafseel / hawala
 Discount must be between zero and the subtotal. | رعایت صفر اور ذیلی کل کے درمیان ہونی چاہیے۔ | Riayat sifar aur zaili kul ke darmiyan honi chahiye.
 Enter at least one quotation amount. | کم از کم ایک کوٹیشن رقم درج کریں۔ | Kam az kam aik quotation raqam darj karein.
 Enter disclaimer text. | اعلانِ دستبرداری لکھیں۔ | Disclaimer likhein.
@@ -578,10 +577,10 @@ How much was taken? | کتنی رقم نکالی؟ | Kitni raqam nikali?
 In | آمد | Aamad
 Is the work increasing or decreasing? | کام بڑھ رہا ہے یا کم ہو رہا ہے؟ | Kaam barh raha hai ya kam ho raha hai?
 Item | آئٹم | Item
-Labour / entry | لیبر / اندراج | Labour / indiraaj
+Labour / entry | لیبر، اندراج | Labour / indiraaj
 Labour assigned to order. | لیبر آرڈر پر لگا دی گئی۔ | Labour order par laga di gayi.
 Labour assigned. | لیبر لگا دی گئی۔ | Labour laga di gayi.
-Material / movement | میٹیریل / آمد و رفت | Material / aamad-o-raft
+Material / movement | میٹیریل، آمد و رفت | Material / aamad-o-raft
 Materials | میٹیریل | Material
 Money in | آمد | Aamad
 Money out | خرچ | Kharch
@@ -607,7 +606,7 @@ PDF downloaded. Attach it to your WhatsApp chat. | پی ڈی ایف ڈاؤن ل�
 PDF shared. | پی ڈی ایف بھیج دی گئی۔ | PDF bhej di gayi.
 Paid | ادا شدہ | Ada shuda
 Paid from which account? | کس اکاؤنٹ سے ادا کیا؟ | Kis account se ada kiya?
-Partner / details | پارٹنر / تفصیل | Partner / tafseel
+Partner / details | پارٹنر، تفصیل | Partner / tafseel
 Payment terms and other details | ادائیگی کی شرائط اور دیگر تفصیل | Adaigi ki sharaait aur deegar tafseel
 Please fill this in. | براہِ کرم یہ بھریں۔ | Barah-e-karam ye bharein.
 Price | قیمت | Qeemat
@@ -807,7 +806,7 @@ Inactive | غیر فعال | Ghair active
 Individual | انفرادی | Infiradi
 Invoice item added. | انوائس آئٹم شامل ہو گیا۔ | Invoice item shamil ho gaya.
 Invoice total | انوائس کل رقم | Invoice kul raqam
-Item / details | آئٹم / تفصیل | Item / tafseel
+Item / details | آئٹم، تفصیل | Item / tafseel
 Item details | آئٹم کی تفصیل | Item ki tafseel
 Item updated. | آئٹم اپ ڈیٹ ہو گیا۔ | Item update ho gaya.
 Labour advance paid. | لیبر ایڈوانس ادا ہو گیا۔ | Labour advance ada ho gaya.
@@ -835,7 +834,7 @@ Mughal Interior and Decor document | مغل انٹیریئر اینڈ ڈیکور
 Mughal Interior and Decor report | مغل انٹیریئر اینڈ ڈیکور رپورٹ | Mughal Interior and Decor report
 Mughal Interior document | مغل انٹیریئر دستاویز | Mughal Interior document
 Negative balance represents customer credit. | منفی بیلنس کا مطلب کسٹمر کی جمع رقم ہے۔ | Manfi balance ka matlab customer ki jama raqam hai.
-Net profit / loss | خالص منافع / نقصان | Khaalis munafa / nuqsaan
+Net profit / loss | خالص منافع، نقصان | Khaalis munafa / nuqsaan
 No accounts found | کوئی اکاؤنٹ نہیں ملا | Koi account nahin mila
 Cash is created automatically. Add a bank account when needed. | کیش اکاؤنٹ خود بن جاتا ہے، ضرورت ہو تو بینک اکاؤنٹ شامل کریں۔ | Cash account khud ban jata hai, zaroorat ho to bank account shamil karein.
 No details | کوئی تفصیل نہیں | Koi tafseel nahin
@@ -924,7 +923,7 @@ Pending | زیرِ التوا | Pending
 In Progress | جاری | Jaari
 Ready | تیار | Tayyar
 Period | مدت | Muddat
-Period totals / closing balance | مدت کا کل / آخری بیلنس | Muddat ka kul / aakhri balance
+Period totals / closing balance | مدت کا کل، آخری بیلنس | Muddat ka kul / aakhri balance
 Please attach the downloaded | براہِ کرم ڈاؤن لوڈ شدہ فائل لگائیں: | Barah-e-karam download shuda file lagayein:
 Please wait… | براہِ کرم انتظار کریں… | Barah-e-karam intezar karein…
 Pool | رقم | Raqam
@@ -939,7 +938,7 @@ Preparing your PDF… | آپ کی پی ڈی ایف تیار ہو رہی ہے… 
 Profitability impact | منافع پر اثر | Munafe par asar
 None | کوئی نہیں | Koi nahin
 Project added. | پراجیکٹ شامل ہو گیا۔ | Project shamil ho gaya.
-Project amount / opening | پراجیکٹ رقم / ابتدائی | Project raqam / ibtidai
+Project amount / opening | پراجیکٹ رقم، ابتدائی | Project raqam / ibtidai
 Project payment | پراجیکٹ ادائیگی | Project payment
 Project period | پراجیکٹ کی مدت | Project ki muddat
 Project scope | کام کی حد | Kaam ki hadd
@@ -1063,4 +1062,53 @@ Language | زبان | Zabaan
 Project quotation | پراجیکٹ کوٹیشن | Project quotation
 Period totals exclude the opening balance. | مدت کے کل میں ابتدائی بیلنس شامل نہیں۔ | Muddat ke kul mein ibtidai balance shamil nahin.
 Generated | تیار کردہ | Tayyar karda
+Number of days | دنوں کی تعداد | Dinon ki tadaad
+Payment number | ادائیگی نمبر | Payment number
+Description | تفصیل | Tafseel
+Reference | حوالہ | Hawala
+Entry | اندراج | Indiraaj
+Record | ریکارڈ | Record
+Bill | بل | Bill
+Net cost | خالص لاگت | Khaalis laagat
+Unit cost | فی یونٹ قیمت | Fi unit qeemat
+Target | کس کے لیے | Kis ke liye
+Total amount | کل رقم | Kul raqam
+Wages assigned | لگائی گئی اجرت | Lagayi gayi ujrat
+From cash account | کس کیش اکاؤنٹ سے | Kis cash account se
+Disclaimer: | اعلانِ دستبرداری: | Disclaimer:
+Disclaimer | اعلانِ دستبرداری | Disclaimer
+Clear mobile number | موبائل نمبر ہٹائیں | Mobile number hatayein
+Clear selection | انتخاب ہٹائیں | Intekhaab hatayein
+Clear filters | فلٹر ہٹائیں | Filter hatayein
+No matches found. Try another search. | کچھ نہیں ملا، کچھ اور تلاش کریں۔ | Kuch nahin mila, kuch aur talaash karein.
+No options available yet. | ابھی کوئی انتخاب موجود نہیں۔ | Abhi koi intekhaab maujood nahin.
+Search options | تلاش کریں | Talaash karein
+Close selection | بند کریں | Band karein
+Delete this order invoice? This is only allowed before receipts, expenses, material or labour are recorded. | یہ آرڈر انوائس حذف کریں؟ یہ صرف وصولی، خرچہ، میٹیریل یا لیبر درج ہونے سے پہلے ممکن ہے۔ | Ye order invoice delete karein? Ye sirf wusooli, kharcha, material ya labour darj hone se pehle mumkin hai.
+Reload to update the app? Save any unfinished forms first. | ایپ اپ ڈیٹ کرنے کے لیے دوبارہ لوڈ کریں؟ پہلے ادھورے فارم محفوظ کر لیں۔ | App update karne ke liye dobara load karein? Pehle adhoore form save kar lein.
+Use your browser menu to install the app. | ایپ انسٹال کرنے کے لیے براؤزر کا مینو استعمال کریں۔ | App install karne ke liye browser ka menu istemal karein.
+Wait for the current action to finish before updating. | اپ ڈیٹ سے پہلے موجودہ کام مکمل ہونے دیں۔ | Update se pehle maujooda kaam mukammal hone dein.
+Prices are subject to change until approval and advance payment. After approval, prices remain fixed unless scope of work or material/site costs change. | منظوری اور ایڈوانس ادائیگی تک قیمتیں بدل سکتی ہیں۔ منظوری کے بعد قیمتیں طے رہیں گی، سوائے اس کے کہ کام کی حد یا میٹیریل/سائٹ کی لاگت بدل جائے۔ | Manzoori aur advance payment tak qeematein badal sakti hain. Manzoori ke baad qeematein tay rahengi, siwaye is ke ke kaam ki hadd ya material/site ki laagat badal jaye.
+Payment receipt | ادائیگی رسید | Payment raseed
+Project | پراجیکٹ | Project
+receipt | رسید | raseed
+labour person | لیبر | labour
+labour wage | اجرت ادائیگی | ujrat payment
+labour advance | لیبر ایڈوانس | labour advance
+labour assignment | لیبر اندراج | labour indiraaj
+material assignment | میٹیریل اندراج | material indiraaj
+expense category | خرچے کی قسم | kharche ki qism
+expense charge | خرچہ | kharcha
+order invoice | آرڈر انوائس | order invoice
+order receipt | آرڈر رسید | order raseed
+order expense | آرڈر خرچہ | order kharcha
+order material | آرڈر میٹیریل | order material
+order labour | آرڈر لیبر | order labour
+order item | آرڈر آئٹم | order item
+purchase material | میٹیریل | material
+purchase payment | سپلائر ادائیگی | supplier payment
+bank account | بینک اکاؤنٹ | bank account
+bank transfer entry | منتقلی | transfer
+banking expense | کاروباری خرچہ | karobari kharcha
+partner drawing | پارٹنر نکاسی | partner nikasi
 `;

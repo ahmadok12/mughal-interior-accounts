@@ -136,3 +136,30 @@ test('every translation line has English, Urdu and Roman Urdu', () => {
     assert.match(parts[1], /[؀-ۿ]|^[\W\d]*$/, `Urdu missing: ${line}`);
   });
 });
+
+test('Urdu PDFs get a copy where English and numbers sit in their own left-to-right pieces', async (t) => {
+  const { d, i18n } = setup(t, 'ur', { app: false });
+  const doc = d.createElement('div');
+  doc.innerHTML = '<p>Proprietor Ali Raza Mughal</p><p>As of 12 Nov 2026</p><b>Rs. 5,000</b>';
+  d.body.append(doc);
+  await wait(10);
+  const copy = i18n.pdfSource(doc);
+  assert.notEqual(copy, doc, 'the screen itself is left alone');
+  assert.ok(!/[⁦-⁩]/.test(copy.textContent), 'no invisible direction marks reach the PDF');
+  const spans = [...copy.querySelectorAll('span[dir=ltr]')].map((s) => s.textContent);
+  assert.ok(spans.includes('Ali Raza Mughal'));
+  assert.ok(spans.some((s) => s.includes('12 Nov 2026')));
+  assert.match(copy.textContent, /مالک/);
+  i18n.setLang('en');
+  assert.equal(i18n.pdfSource(doc), doc, 'English PDFs are made exactly as before');
+});
+
+test('document labels and app messages with numbers are translated, names kept', async (t) => {
+  const { i18n } = setup(t, 'ur', { app: false });
+  assert.equal(i18n.t('Number of days'), 'دنوں کی تعداد');
+  assert.match(i18n.t('Enter an amount up to Rs. 2,000.'), /Rs\. 2,000.*تک رقم درج کریں/);
+  assert.match(i18n.t('Supplier payment - Ali Timber'), /سپلائر ادائیگی - .*Ali Timber/);
+  assert.match(i18n.t('Delete party'), /پارٹی حذف کریں/);
+  assert.equal(i18n.t('Mughal Interior'), 'Mughal Interior', 'the business name stays as written');
+  assert.equal(i18n.t('Project receipt', 'roman'), 'Project raseed');
+});

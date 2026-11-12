@@ -50,8 +50,14 @@
   /* ---------- translating one piece of text ---------- */
   // Only mixed runs like "5 Jan 2026" need wrapping; plain numbers already read correctly in Urdu.
   const isolate = (s) => (lang === 'ur' && s && !ARABIC.test(s) && /\d/.test(s) && /[A-Za-z]/.test(s) ? LRI + s + PDI : s);
-  const caps = (src, out) =>
-    lang === 'roman' && /[A-Z]/.test(src) && src === src.toUpperCase() && src.length > 1 ? out.toUpperCase() : out;
+  // Kept parts (names, amounts, dates) inside an Urdu sentence keep their own left-to-right order.
+  const keepOrder = (s) => (lang === 'ur' && s && !ARABIC.test(s) && /[A-Za-z\d]/.test(s) ? LRI + s + PDI : s);
+  const caps = (src, out) => {
+    if (lang !== 'roman') return out;
+    if (/[A-Z]/.test(src) && src === src.toUpperCase() && src.length > 1) return out.toUpperCase();
+    if (/^[A-Z]/.test(src) && /^[a-z]/.test(out)) return out[0].toUpperCase() + out.slice(1);
+    return out;
+  };
   const STOP = { ur: '۔', roman: '.' };
 
   // {n} = the group translated (or kept), $n = the group kept exactly (names, dates, amounts).
@@ -61,6 +67,7 @@
     [/^As of (.+)$/, { ur: '$1 تک', roman: '$1 tak' }],
     [/^(.+?\d{4}) to (.+?\d{4})$/, { ur: '$1 تا $2', roman: '$1 se $2' }],
     [/^Generated (.+?)(\.?)$/, { ur: 'تیاری: $1', roman: 'Tayyar: $1' }],
+    [/^Period: (.+?) · Generated (.+)$/, { ur: 'مدت: {1} · تیاری: $2', roman: 'Muddat: {1} · Tayyar: $2' }],
     [/^Period: (.+)$/, { ur: 'مدت: $1', roman: 'Muddat: $1' }],
     [/^Available in (.+): (.+)$/, { ur: '$1 میں دستیاب: $2', roman: '$1 mein dastiyab: $2' }],
     [/^← Back to (.+)$/, { ur: '← واپس: {1}', roman: '← Wapas: {1}' }],
@@ -77,6 +84,22 @@
     [/^(Rs\. [-\d.,]+) latest cost$/, { ur: '$1 تازہ قیمت', roman: '$1 taaza qeemat' }],
     [/^(.+) - ([-\d.,]+) (\S+) available$/, { ur: '$1 - $2 {3} دستیاب', roman: '$1 - $2 {3} dastiyab' }],
     [/^([-\d.,]+) (\S+) available$/, { ur: '$1 {2} دستیاب', roman: '$1 {2} dastiyab' }],
+    [/^Proprietor (.+)$/, { ur: 'مالک $1', roman: 'Maalik: $1' }],
+    [/^PAYMENT RECEIPT · (.+)$/, { ur: 'ادائیگی رسید · $1', roman: 'PAYMENT RASEED · $1' }],
+    [/^(.+) · Due (Rs\. .+)$/, { ur: '$1 · باقی $2', roman: '$1 · baqi $2' }],
+    [/^Invoice (Rs\. .+) · received to date (Rs\. .+)$/, { ur: 'انوائس $1 · اب تک وصول $2', roman: 'Invoice $1 · ab tak wusool $2' }],
+    [/^Initial opening: (.+)$/, { ur: 'ابتدائی رقم: $1', roman: 'Ibtidai raqam: $1' }],
+    [/^All entries for this (project|order)$/, { ur: 'اس {1} کے تمام اندراج', roman: 'Is {1} ke tamaam indiraaj' }],
+    [/^Enter an amount up to (.+)\.$/, { ur: '$1 تک رقم درج کریں۔', roman: '$1 tak raqam darj karein.' }],
+    [/^Select the (project|order)\.$/, { ur: '{1} منتخب کریں۔', roman: '{1} chunein.' }],
+    [/^Please choose (.+)\.$/, { ur: '{1} منتخب کریں۔', roman: '{1} chunein.' }],
+    [/^Select (.+)$/, { ur: '{1} منتخب کریں', roman: '{1} chunein' }],
+    [/^Use (.+)$/, { ur: '$1 استعمال کریں', roman: '$1 istemal karein' }],
+    [/^Delete (.+)$/, { ur: '{1} حذف کریں', roman: '{1} delete karein' }],
+    [/^Deleting (.+)…$/, { ur: '{1} حذف ہو رہا ہے…', roman: '{1} delete ho raha hai…' }],
+    [/^Assigning (\d+) materials?…$/, { ur: '$1 میٹیریل دیے جا رہے ہیں…', roman: '$1 material diye ja rahe hain…' }],
+    [/^Labour: (.+) \(([\d.½]+) days?\)$/, { ur: 'لیبر: $1 ($2 دن)', roman: 'Labour: $1 ($2 din)' }],
+    [/^(Cash purchase|Project receipt|Order receipt|Supplier payment|Partner drawing) - (.+)$/, { ur: '{1} - $2', roman: '{1} - $2' }],
     [/^Customer (\d)-column statement$/, { ur: 'کسٹمر کھاتہ ($1 کالم)', roman: 'Customer khata ($1 column)' }],
     [/^Supplier (\d)-column statement$/, { ur: 'سپلائر کھاتہ ($1 کالم)', roman: 'Supplier khata ($1 column)' }],
   ];
@@ -88,7 +111,7 @@
           done = phrase(part, depth + 1);
         return done == null ? isolate(part) : done;
       })
-      .replace(/\$(\d)/g, (_, n) => isolate(match[n] || ''));
+      .replace(/\$(\d)/g, (_, n) => keepOrder(match[n] || ''));
   }
 
   function phrase(text, depth = 0) {
@@ -255,6 +278,45 @@
     return rec && rec.out === cur ? rec.en : cur;
   }
 
+  /* ---------- PDFs ----------
+     The PDF maker draws text word by word and gets mixed Urdu/English lines wrong. For Urdu, a copy of
+     the document is made in which every English or number run sits in its own left-to-right span. */
+  const RUNS = /([A-Za-z0-9][A-Za-z0-9.,:;'’()\-\/+%&@#×·\s]*[A-Za-z0-9.)%]|[A-Za-z0-9])/g;
+  function splitMixed(root) {
+    const doc = root.ownerDocument,
+      walker = doc.createTreeWalker(root, 4),
+      nodes = [];
+    let n;
+    while ((n = walker.nextNode())) {
+      const text = n.data.replace(/[\u2066-\u2069]/g, '');
+      if (text !== n.data) n.data = text;
+      if (ARABIC.test(text) && /[A-Za-z0-9]/.test(text)) nodes.push(n);
+    }
+    nodes.forEach((node) => {
+      const frag = doc.createDocumentFragment();
+      let last = 0;
+      node.data.replace(RUNS, (run, _g, at) => {
+        if (at > last) frag.append(node.data.slice(last, at));
+        const span = doc.createElement('span');
+        span.dir = 'ltr';
+        span.style.unicodeBidi = 'isolate';
+        span.textContent = run;
+        frag.append(span);
+        last = at + run.length;
+        return run;
+      });
+      if (last < node.data.length) frag.append(node.data.slice(last));
+      node.replaceWith(frag);
+    });
+    return root;
+  }
+  // Returns the node to hand to the PDF maker: the node itself, or (Urdu) a prepared copy.
+  function pdfSource(node) {
+    if (!node || lang !== 'ur') return node;
+    translateTree(node);
+    return splitMixed(node.cloneNode(true));
+  }
+
   let observer = null;
   function watch() {
     if (observer || typeof MutationObserver === 'undefined') return;
@@ -404,6 +466,7 @@
     source,
     sourceAttr,
     translateTree,
+    pdfSource,
     onChange: (fn) => listeners.add(fn),
     languages: LANGS,
   };

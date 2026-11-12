@@ -27,7 +27,7 @@
 }
 html[data-lang='ur'] body,
 html[data-lang='ur'] .pdf-document,
-html[data-lang='ur'] .report-pdf-document {
+html[data-lang='ur'] .report-print-document {
   font-family: var(--mg-sans);
   line-height: 1.75;
   letter-spacing: 0 !important;
@@ -183,4 +183,64 @@ html[data-lang='ur'] .es-count {
 html[data-lang='ur'] .es-question,
 html[data-lang='ur'] .es-q {
   line-height: 1.9;
+}
+
+/* Mixed Urdu and English: each line of text takes its direction from its own first letter, so
+   English names, addresses and the disclaimer read left-to-right inside Urdu screens and PDFs. */
+html[dir='rtl'] :is(p, span, b, small, i, em, strong, td, th, h1, h2, h3, h4, label, a, li, .detail-amount) {
+  unicode-bidi: plaintext;
+}
+/* PDFs draw each letter separately when letter-spacing is set, which breaks Urdu joining. */
+html[data-lang='ur'] :is(.pdf-document, .report-print-document, .pdf-exporting) * {
+  letter-spacing: 0 !important;
+}
+html[dir='rtl'] :is(.document-meta, .document-footer, .business-address, .statement-parties) :is(b, span, small, p) {
+  text-align: right;
+}
+
+/* ---------- Small phones (iPhone SE and similar) ---------- */
+.topbar.has-lang > div span,
+.topbar.has-lang > div b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-lang='ur'] .report-tools .button {
+  white-space: nowrap;
+}
+@media (max-width: 380px) {
+  .topbar.has-lang {
+    gap: 8px;
+  }
+  .lang-switch.on-topbar {
+    min-width: 40px;
+    padding: 0 8px;
+  }
+  .lang-switch.on-topbar svg {
+    display: none;
+  }
+  html[data-lang='ur'] .topbar > div b {
+    font-size: 17px;
+  }
+  html[data-lang='ur'] .report-tools .button {
+    padding-inline: 8px;
+    gap: 6px;
+    font-size: 12px;
+  }
+}
+/* Room for Nastaliq's tall letters and dots inside the clipped title. */
+html[data-lang='ur'] .topbar.has-lang > div b {
+  line-height: 1.95;
+  margin-block: -6px -4px;
+  padding-inline: 2px;
+}
+html[data-lang='ur'] .topbar.has-lang > div span {
+  line-height: 1.6;
+}
+html[data-lang='ur'] .report-print-document,
+html[data-lang='ur'] .report-print-document * {
+  font-family: 'Nunito', 'Mughal Nastaliq', Inter, Arial, sans-serif;
+}
+html[data-lang='ur'] .report-print-document :is(th, small, p, h1, td) {
+  line-height: 1.8;
 }
