@@ -149,7 +149,7 @@
         button.classList.contains('processing')
       )
         return;
-      const label = button.textContent.trim(),
+      const label = (window.MughalI18n ? window.MughalI18n.source(button) : button.textContent).trim(),
         action = button.dataset.action || '';
       let name = '';
       if (button.classList.contains('back')) name = 'back';
@@ -234,7 +234,9 @@
     if (!control) return;
     const selected = source.tagName === 'SELECT' ? source.options[source.selectedIndex]?.label : source.value;
     const text = selected || source.getAttribute('placeholder') || `Select ${control.label.toLowerCase()}`;
-    if (control.value.textContent !== text) control.value.textContent = text;
+    // With a language other than English showing, the label may hold the translated words.
+    const shownSource = window.MughalI18n ? window.MughalI18n.source(control.value) : control.value.textContent;
+    if (control.value.textContent !== text && shownSource !== text) control.value.textContent = text;
     const disabled = source.disabled || source.readOnly || source.matches(':disabled');
     if (control.button.disabled !== Boolean(disabled)) control.button.disabled = Boolean(disabled);
     control.button.setAttribute('aria-label', `${control.label}: ${text}`);

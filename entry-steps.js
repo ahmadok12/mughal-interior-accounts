@@ -460,7 +460,8 @@
     flow.form.classList.remove('es-on');
   }
   function start(flow) {
-    const title = (flow.sheet.querySelector('.sheet-head h2')?.textContent || '').trim();
+    const head = flow.sheet.querySelector('.sheet-head h2'),
+      title = ((window.MughalI18n ? window.MughalI18n.source(head) : head?.textContent) || '').trim();
     const editing = /^edit\b/i.test(title) || (flow.config.edit && flow.form.querySelector(flow.config.edit)?.value);
     stop(flow);
     if (editing) return; // editing an existing record keeps the full form

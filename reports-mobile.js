@@ -1757,6 +1757,7 @@
       : `<div class="report-print-head"><div><h1>${esc(definitions[reportState.type].title)}</h1><p>${esc(state.business?.name || 'Mughal Interior')}</p><p>Period: ${esc(reportPeriod())} · Generated ${date(today())}</p></div><img src="assets/mughal-logo.png" alt="Mughal Interior"></div>`;
     node.innerHTML = header + $('#reportContent').innerHTML + businessContact();
     document.body.append(node);
+    window.MughalI18n?.translateTree(node);
     return node;
   }
   function reportPdfOptions() {
@@ -1809,8 +1810,8 @@
           file = new File([blob], options.filename, { type: 'application/pdf' }),
           shareData = {
             files: [file],
-            title: definitions[reportState.type].title,
-            text: 'Mughal Interior and Decor report',
+            title: tr(definitions[reportState.type].title),
+            text: tr('Mughal Interior and Decor report'),
           };
         if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
           try {
@@ -1822,7 +1823,7 @@
         } else {
           downloadPdfBlob(blob, options.filename);
           window.open(
-            `https://wa.me/?text=${encodeURIComponent('Please attach the downloaded ' + options.filename)}`,
+            `https://wa.me/?text=${encodeURIComponent(tr('Please attach the downloaded ' + options.filename))}`,
             '_blank',
             'noopener',
           );

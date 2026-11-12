@@ -71,6 +71,7 @@ const shortCode = (prefix, value) =>
     .replaceAll('-', '')
     .slice(0, 8)
     .toUpperCase()}`;
+const tr = (text) => (window.MughalI18n ? window.MughalI18n.t(text) : text);
 const safeName = (value) =>
   String(value || 'document')
     .replace(/[^a-z0-9_-]+/gi, '-')
@@ -2923,8 +2924,8 @@ async function shareCurrent(button) {
         file = new File([blob], detailPdfName(), { type: 'application/pdf' }),
         shareData = {
           files: [file],
-          title: state.detail?.documentName || 'Mughal Interior document',
-          text: 'Mughal Interior and Decor document',
+          title: state.detail?.documentName || tr('Mughal Interior document'),
+          text: tr('Mughal Interior and Decor document'),
         };
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
         try {
@@ -2936,7 +2937,7 @@ async function shareCurrent(button) {
       } else {
         downloadPdfBlob(blob, detailPdfName());
         window.open(
-          `https://wa.me/?text=${encodeURIComponent('Please attach the downloaded ' + detailPdfName())}`,
+          `https://wa.me/?text=${encodeURIComponent(tr('Please attach the downloaded ' + detailPdfName()))}`,
           '_blank',
           'noopener',
         );
