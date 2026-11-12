@@ -75,7 +75,141 @@
       ],
       review: ['#purchaseDate', '[data-toggle-details="purchaseDetailsWrap"]', '#purchaseDetailsWrap'],
     },
+
+    // ---------- Sprint 3: the remaining entries ----------
+    labourAssignmentForm: {
+      steps: [
+        { q: 'Which project did they work on?', short: 'Project', f: '#labourAssignmentProject', auto: true },
+        { q: 'Who worked?', short: 'Labour person', f: '#labourAssignmentPerson', auto: true },
+        { q: 'How many days did they work?', short: 'Days', f: '#labourDayType', with: ['#labourAssignmentRate', '#labourActualCost'] },
+      ],
+      review: ['#labourAssignmentDate', '#labourAssignmentDetails'],
+    },
+    orderLabourForm: {
+      steps: [
+        { q: 'Which order did they work on?', short: 'Order', f: '#orderLabourOrder', auto: true },
+        { q: 'Who worked?', short: 'Labour person', f: '#orderLabourPerson', auto: true },
+        { q: 'How many days did they work?', short: 'Days', f: '#orderLabourDay', with: ['#orderLabourRate', '#orderLabourTotal'] },
+      ],
+      review: ['#orderLabourDate', '#orderLabourDetails'],
+    },
+    materialAssignmentForm: {
+      steps: [
+        { q: (form) => (isReturn(form, '#materialAssignmentMode') ? 'Which project is the material coming back from?' : 'Which project is the material for?'),
+          short: 'Project', f: '#materialAssignmentProject', auto: true },
+        { q: (form) => (isReturn(form, '#materialAssignmentMode') ? 'What came back?' : 'What material went to the job?'), short: 'Materials',
+          with: ['#materialAssignmentImport', '.invoice-lines-head', '#materialAssignmentLines', '#materialAssignmentAddWrap'],
+          summary: (form) => materialSummary(form, '#materialAssignmentLines') },
+      ],
+      review: ['#materialAssignmentDate'],
+    },
+    orderMaterialForm: {
+      steps: [
+        { q: (form) => (isReturn(form, '#orderMaterialMode') ? 'Which order is the material coming back from?' : 'Which order is the material for?'),
+          short: 'Order', f: '#orderMaterialOrder', auto: true },
+        { q: (form) => (isReturn(form, '#orderMaterialMode') ? 'What came back?' : 'What material went to the order?'), short: 'Materials',
+          with: ['#orderMaterialImport', '.invoice-lines-head', '#orderMaterialLines', '#orderMaterialAddWrap'],
+          summary: (form) => materialSummary(form, '#orderMaterialLines') },
+      ],
+      review: ['#orderMaterialDate'],
+    },
+    expenseChargeForm: {
+      steps: [
+        { q: 'Which project is the expense for?', short: 'Project', f: '#expenseChargeProject', auto: true },
+        { q: 'What was it spent on?', short: 'Expense', f: '#expenseChargeCategory', auto: true },
+        { q: 'How much was it?', short: 'Amount', f: '#expenseChargeAmount', money: true },
+      ],
+      review: ['#expenseChargeDate', '#expenseChargeDetails'],
+    },
+    orderExpenseChargeForm: {
+      steps: [
+        { q: 'Which order is the expense for?', short: 'Order', f: '#orderExpenseOrder', auto: true },
+        { q: 'What was it spent on?', short: 'Expense', f: '#orderExpenseCategory', auto: true },
+        { q: 'How much was it?', short: 'Amount', f: '#orderExpenseAmount', money: true },
+      ],
+      review: ['#orderExpenseDate', '#orderExpenseDetails'],
+    },
+    bankingExpenseForm: {
+      steps: [
+        { q: 'What was it spent on?', short: 'Expense', f: '#bankingExpenseCategory', auto: true },
+        { q: 'How much was it?', short: 'Amount', f: '#bankingExpenseAmount', money: true },
+        { q: 'Paid from which account?', short: 'Paid from', f: '#bankingExpenseAccount', auto: true },
+      ],
+      review: ['#bankingExpenseDate', '#bankingExpenseDetails'],
+    },
+    partnerDrawingForm: {
+      edit: '#partnerDrawingId',
+      steps: [
+        { q: 'How much was taken?', short: 'Amount', f: '#partnerDrawingAmount', money: true },
+        { q: 'Taken from which account?', short: 'From', f: '#partnerDrawingAccount', auto: true },
+      ],
+      review: [':scope > label:first-of-type', '#partnerDrawingDate', '#partnerDrawingDetails'],
+    },
+    bankTransferForm: {
+      steps: [
+        { q: (form) => ({ withdraw: 'Which bank did you take cash out of?', deposit: 'Which cash account did the money come from?' })[modeOf(form, '#bankTransferMode')] || 'From which bank?',
+          short: 'From', f: '#bankTransferFrom', auto: true },
+        { q: (form) => ({ withdraw: 'Which cash account did it go into?', deposit: 'Which bank did you deposit into?' })[modeOf(form, '#bankTransferMode')] || 'To which bank?',
+          short: 'To', f: '#bankTransferTo', auto: true },
+        { q: 'How much?', short: 'Amount', f: '#bankTransferAmount', money: true },
+      ],
+      review: ['#bankTransferDate', '#bankTransferDetails'],
+    },
+    scopeForm: {
+      steps: [
+        { q: 'Which project changed?', short: 'Project', f: '#scopeProject', auto: true },
+        { q: 'Is the work increasing or decreasing?', short: 'Change', f: '#scopeType', auto: true },
+        { q: 'By how much does the bill change?', short: 'Amount', f: '#scopeAmount', money: true },
+      ],
+      review: ['#scopeDate', '#scopeDescription'],
+    },
+    quoteForm: {
+      steps: [
+        { q: 'Which project is this quote for?', short: 'Project', f: '#quoteProjectSearch' },
+        { q: 'What is included in the work?', short: 'Work', f: '#quoteDetails' },
+        { q: 'When will the work happen?', short: 'Dates', f: '#quoteStart', with: ['#quoteEnd'],
+          summary: (form) => [form.querySelector('#quoteStart').value, form.querySelector('#quoteEnd').value].filter(Boolean).join(' → ') +
+            (form.querySelector('#quoteDays').value ? ` · ${form.querySelector('#quoteDays').value} days` : '') },
+        { q: 'What is the price?', short: 'Price', f: '#quoteWithMaterial', with: ['#quoteShowBoth'],
+          summary: (form) => [['With material', '#quoteWithMaterial'], ['Without material', '#quoteWithoutMaterial']]
+            .filter(([, sel]) => form.querySelector(sel).value).map(([label, sel]) => `${label} ${amountText(form.querySelector(sel).value)}`).join(' · ') },
+        { q: 'Payment terms and other details', short: 'Terms', f: '#quotePaymentTerms', with: ['#quoteNotes'] },
+      ],
+      review: [],
+    },
+    orderInvoiceForm: {
+      steps: [
+        { q: 'Who is the customer?', short: 'Customer', f: '#orderInvoiceCustomer', with: ['#orderInvoiceMobile'],
+          summary: (form) => [form.querySelector('#orderInvoiceCustomer').value, form.querySelector('#orderInvoiceMobile').value].filter(Boolean).join(' · ') },
+        {
+          q: 'What is in the order?',
+          short: 'Items',
+          with: ['.invoice-lines-head', '#orderInvoiceLines', '#addOrderInvoiceLine', '.totals-card'],
+          check: (form) => (form.querySelector('#orderInvoiceLines .invoice-line') ? '' : 'Add at least one item.'),
+          summary: (form) => {
+            const lines = form.querySelectorAll('#orderInvoiceLines .invoice-line').length,
+              total = form.querySelector('#orderInvoiceGrandTotal')?.textContent || '';
+            return `${lines} item${lines === 1 ? '' : 's'} · ${total}`;
+          },
+        },
+      ],
+      review: ['#orderInvoiceDate'],
+    },
   };
+
+  function modeOf(form, selector) {
+    return form.querySelector(selector)?.value || '';
+  }
+  function isReturn(form, selector) {
+    return modeOf(form, selector) === 'return';
+  }
+  function materialSummary(form, linesSelector) {
+    const names = Array.from(form.querySelectorAll(`${linesSelector} .invoice-line select`))
+      .map((sel) => (sel.value ? (sel.selectedOptions[0]?.textContent || '').split(' - ')[0].trim() : ''))
+      .filter(Boolean);
+    if (!names.length) return '';
+    return names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+  }
 
   const flows = new Map();
 
@@ -91,11 +225,21 @@
   function stepUnits(form, step) {
     return [step.f, ...(step.with || [])].filter(Boolean).map((s) => unitOf(form, s)).filter(Boolean);
   }
-  function skipped(form, step) {
+  function unavailable(form, step) {
     if (!step.f) return false;
     const field = form.querySelector(step.f),
       unit = unitOf(form, step.f);
     return !field || !unit || isHidden(unit) || field.disabled;
+  }
+  function onlyChoice(form, step) {
+    const field = step.f ? form.querySelector(step.f) : null;
+    return !!field && field.tagName === 'SELECT' && !!field.value && Array.from(field.options).filter((o) => o.value).length === 1;
+  }
+  // A list that opens with its only possible answer already chosen is not asked.
+  // Decided once when the entry opens, so the step count doesn't change as you answer.
+  function skipped(form, step) {
+    const flow = flows.get(form.id);
+    return unavailable(form, step) || !!(flow && flow.fixed && flow.fixed.has(step));
   }
   function labelText(form, step) {
     return step.short || (unitOf(form, step.f)?.firstChild?.textContent || '').replace('*', '').trim();
@@ -144,7 +288,7 @@
     const keep = new Set(units);
     Array.from(flow.form.children).forEach((child) => {
       if (child.matches('input[type="hidden"]')) return;
-      const isActions = child.classList.contains('form-actions');
+      const isActions = child.classList.contains('form-actions') || child.classList.contains('stack-actions');
       child.classList.toggle('es-off', isActions ? !showActions : !keep.has(child));
     });
   }
@@ -164,14 +308,15 @@
       summary.hidden = false;
       summary.innerHTML = '';
       steps.forEach((step, i) => {
-        if (skipped(form, step)) return;
+        if (unavailable(form, step)) return;
         const row = document.createElement('button');
         row.type = 'button';
         row.className = 'es-row';
         row.innerHTML = '<span></span><b></b><small>Change</small>';
         row.querySelector('span').textContent = labelText(form, step);
         row.querySelector('b').textContent = valueText(form, step) || '—';
-        row.addEventListener('click', () => go(flow, i));
+        if (flows.get(form.id)?.fixed?.has(step)) row.disabled = true;
+        else row.addEventListener('click', () => go(flow, i));
         summary.append(row);
       });
       const reviewUnits = (config.review || []).map((s) => unitOf(form, s)).filter(Boolean);
@@ -180,7 +325,7 @@
       nav.classList.add('es-off');
     } else {
       const step = steps[flow.index];
-      head.querySelector('.es-q').textContent = step.q;
+      head.querySelector('.es-q').textContent = typeof step.q === 'function' ? step.q(form) : step.q;
       summary.hidden = true;
       showOnly(flow, stepUnits(form, step), false);
       nav.classList.remove('es-off');
@@ -259,10 +404,12 @@
     flow.form.classList.remove('es-on');
   }
   function start(flow) {
-    const editing = flow.config.edit && flow.form.querySelector(flow.config.edit)?.value;
+    const title = (flow.sheet.querySelector('.sheet-head h2')?.textContent || '').trim();
+    const editing = /^edit\b/i.test(title) || (flow.config.edit && flow.form.querySelector(flow.config.edit)?.value);
     stop(flow);
     if (editing) return; // editing an existing record keeps the full form
     flow.active = true;
+    flow.fixed = new Set(flow.config.steps.filter((step) => onlyChoice(flow.form, step)));
     flow.form.classList.add('es-on');
     flow.head.classList.remove('es-off');
     flow.index = -1;

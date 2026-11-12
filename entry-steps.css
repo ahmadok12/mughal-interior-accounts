@@ -119,3 +119,10 @@ form.es-on > label input[type='number'] {
 form.es-on > label .search-select-trigger {
   min-height: 58px;
 }
+/* A summary row whose only possible answer was chosen for you (for example the cash account). */
+.es-row:disabled {
+  cursor: default;
+}
+.es-row:disabled small {
+  visibility: hidden;
+}
