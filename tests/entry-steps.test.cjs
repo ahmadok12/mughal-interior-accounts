@@ -233,3 +233,25 @@ test('returning material asks what came back', async (t) => {
   await wait(60);
   assert.match(d.getElementById('materialAssignmentSheet').querySelector('.es-q').textContent, /coming back from/);
 });
+
+test('adding a party asks its name, with optional details on the review; editing keeps the full form', async (t) => {
+  const { d, run, visible } = setup(t);
+  run(`openParty()`);
+  await wait(60);
+  const sheet = d.getElementById('partySheet');
+  assert.equal(sheet.querySelector('.es-q').textContent, 'What is the party’s name?');
+  assert.ok(!visible(d.getElementById('partyPhone')));
+  sheet.querySelector('.es-next').click();
+  assert.equal(sheet.querySelector('.es-error').hidden, false, 'a name is required');
+  d.getElementById('partyName').value = 'Haji Nawaz';
+  sheet.querySelector('.es-next').click();
+  assert.equal(sheet.querySelector('.es-q').textContent, 'Check and save');
+  assert.ok(visible(d.getElementById('partyPhone')), 'mobile number is on the review');
+  run(`closeSheets(true)`);
+  await wait(60);
+  const party = run(`state.parties[0].id`);
+  run(`openParty('${party}')`);
+  await wait(60);
+  assert.ok(visible(d.getElementById('partyPhone')), 'Edit party shows the full form');
+  assert.ok(!visible(sheet.querySelector('.es-head')));
+});
