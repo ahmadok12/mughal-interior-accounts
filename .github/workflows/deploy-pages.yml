@@ -48,8 +48,8 @@ jobs:
         run: |
           mkdir _site
           cp index.html offline.html manifest.webmanifest sw.js config.js _site/
-          cp app-mobile.js reports-mobile.js mobile-controls.js entry-steps.js pwa.js _site/
-          cp mobile.css reports-mobile.css mobile-controls.css print-branding.css pwa.css glass.css entry-steps.css _site/
+          cp app-mobile.js reports-mobile.js mobile-controls.js entry-steps.js carpenter-loader.js pwa.js _site/
+          cp mobile.css reports-mobile.css mobile-controls.css print-branding.css pwa.css glass.css entry-steps.css carpenter-loader.css _site/
           cp -r assets _site/
           find _site -type f | sort
       - uses: actions/upload-pages-artifact@v3

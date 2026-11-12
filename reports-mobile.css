@@ -80,3 +80,11 @@
 .statement-print .statement-table .number{white-space:normal;font-size:13px}
 .statement-print .statement-table tr,.statement-print .statement-heading,.statement-print .statement-parties{break-inside:avoid}
 .html2pdf__container .report-print-document{position:static;left:auto;top:auto}
+
+/* Drill-downs: rows you can tap to see what is behind them */
+#reportContent tr.drill-row{cursor:pointer;transition:background-color .15s ease}
+#reportContent tr.drill-row:hover,#reportContent tr.drill-row:active,#reportContent tr.drill-row:focus-visible{background:rgba(201,162,74,.12);outline:0}
+#reportContent tr.drill-row td b:first-of-type::after{content:" ›";color:#9a7a2c;font-weight:800}
+.report-drill-back{display:inline-flex;align-items:center;min-height:42px;margin:0 0 10px;padding:0 14px;border:1px solid rgba(201,162,74,.55);border-radius:999px;background:rgba(232,211,154,.28);color:#6a5222;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.report-drill-back.hidden{display:none}
+.drill-link{padding:0;border:0;background:none;color:#2a6450;font:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer}

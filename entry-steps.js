@@ -195,6 +195,62 @@
       ],
       review: ['#orderInvoiceDate'],
     },
+
+    // ---------- Sprint 4: adding records. Required answers are asked; optional details sit on the review. ----------
+    partyForm: {
+      // The record's id is created before saving, so only the sheet title tells an edit apart.
+      steps: [{ q: 'What is the party’s name?', short: 'Name', f: '#partyName' }],
+      review: ['#partyCode', '#partyPhone', '#partyAddress'],
+    },
+    projectForm: {
+      // The record's id is created before saving, so only the sheet title tells an edit apart.
+      steps: [
+        { q: 'Which party is the project for?', short: 'Party', f: '#projectParty', auto: true },
+        { q: 'What is the project called?', short: 'Project', f: '#projectName' },
+      ],
+      review: ['#projectCode', '#projectLocation', '[data-toggle-details="projectOpeningWrap"]', '#projectOpeningWrap', '#projectClosed'],
+    },
+    supplierForm: {
+      edit: '#supplierId',
+      steps: [{ q: 'What is the supplier’s name?', short: 'Name', f: '#supplierName' }],
+      review: ['#supplierMobile', '#supplierCompany', '#supplierOpeningAmount', '#supplierAddress', '#supplierDetails'],
+    },
+    purchaseMaterialForm: {
+      // The record's id is created before saving, so only the sheet title tells an edit apart.
+      steps: [
+        { q: 'What is the material called?', short: 'Name', f: '#purchaseMaterialName' },
+        { q: 'How do you track it?', short: 'Tracking', f: '#purchaseMaterialTracking', auto: true },
+        { q: 'What unit is it counted in?', short: 'Unit', f: '#purchaseMaterialUnit', auto: true },
+      ],
+      review: ['#purchaseMaterialCode', '#purchaseMaterialOpeningQty', '#purchaseMaterialOpeningAmount', '#purchaseMaterialDetails'],
+    },
+    labourPersonForm: {
+      edit: '#labourPersonId',
+      steps: [
+        { q: 'What is their name?', short: 'Name', f: '#labourName' },
+        { q: 'What is their daily wage?', short: 'Daily wage', f: '#labourDailyWage', money: true },
+      ],
+      review: ['#labourMobile', '#labourJoiningDate', '#labourSpeciality', '#labourRecordDate'],
+    },
+    bankAccountForm: {
+      edit: '#bankAccountId',
+      steps: [
+        { q: 'What do you call this account?', short: 'Account', f: '#bankAccountName' },
+        { q: 'Which bank is it with?', short: 'Bank', f: '#bankAccountBank' },
+        { q: 'How much was in it before you started the app?', short: 'Opening balance', f: '#bankAccountOpening', money: true },
+      ],
+      review: ['#bankAccountNumber'],
+    },
+    orderItemForm: {
+      edit: '#orderItemId',
+      steps: [{ q: 'What is the item called?', short: 'Item', f: '#orderItemName' }],
+      review: ['#orderItemDetails'],
+    },
+    expenseCategoryForm: {
+      edit: '#expenseCategoryId',
+      steps: [{ q: 'What is the expense called?', short: 'Expense', f: '#expenseCategoryName' }],
+      review: ['#expenseCategoryDetails'],
+    },
   };
 
   function modeOf(form, selector) {

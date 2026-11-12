@@ -16,6 +16,7 @@
     supplierStatement: { title: 'Supplier statement', filters: ['date', 'supplier'] },
     receivables: { title: 'Receivable report', filters: ['asOfDate'] },
     expenses: { title: 'Expenses report', filters: ['date'] },
+    jobProfit: { title: 'Project profit', filters: [] },
     partnerDrawings: {
       get title() {
         return `${partnerName()} partner drawings`;
@@ -32,6 +33,8 @@
     bankStatement: { title: 'Bank Statement', filters: ['date', 'account'] },
   };
   const num = (value) => Number(value || 0);
+  // Rows you can tap to see what is behind them carry data-drill="target:…" (see drill-downs below).
+  const drillAttr = (spec) => (spec ? ` class="drill-row" data-drill="${esc(spec)}" tabindex="0"` : '');
   const sum = (rows, pick) => rows.reduce((total, row) => total + num(pick(row)), 0);
   const inRange = (value) => {
     const day = String(value || '').slice(0, 10),
@@ -375,7 +378,7 @@
       margin = revenue ? (profit / revenue) * 100 : 0;
     const body = rows.map(
       (row) =>
-        `<tr><td><b>${esc(row.name)}</b><small>${esc(row.number)} · ${esc(row.customer)}</small></td><td class="number">${money(row.revenue)}</td><td class="number">${money(row.materials)}</td><td class="number">${money(row.labour)}</td><td class="number">${money(row.expenses)}</td><td class="number">${money(row.revenue - row.cost)}</td></tr>`,
+        `<tr${drillAttr(`profit:${row.kind}:${row.id}`)}><td><b>${esc(row.name)}</b><small>${esc(row.number)} · ${esc(row.customer)}</small></td><td class="number">${money(row.revenue)}</td><td class="number">${money(row.materials)}</td><td class="number">${money(row.labour)}</td><td class="number">${money(row.expenses)}</td><td class="number">${money(row.revenue - row.cost)}</td></tr>`,
     );
     const csv = [
       [
@@ -542,7 +545,7 @@
       balance = sales - received;
     const body = rows.map(
       (row) =>
-        `<tr><td><b>${esc(row.name)}</b><small>${esc(row.number)} · ${esc(row.customer)}</small></td><td class="number">${money(row.revenue)}</td><td class="number report-positive">${money(row.received)}</td><td class="number ${row.balance < 0 ? 'report-positive' : row.balance > 0 ? 'report-negative' : ''}">${money(row.balance)}</td></tr>`,
+        `<tr${drillAttr(`statement:${row.kind}:${row.id}`)}><td><b>${esc(row.name)}</b><small>${esc(row.number)} · ${esc(row.customer)}</small></td><td class="number">${money(row.revenue)}</td><td class="number report-positive">${money(row.received)}</td><td class="number ${row.balance < 0 ? 'report-positive' : row.balance > 0 ? 'report-negative' : ''}">${money(row.balance)}</td></tr>`,
     );
     if (rows.length) {
       body.push(
@@ -814,7 +817,7 @@
       balance = sum(rows, (r) => r.balance);
     const body = rows.map(
       (row) =>
-        `<tr><td><b>${esc(row.customer || 'Customer')}</b><small>${esc(row.name)} · ${esc(row.number)}</small></td><td>${date(row.day)}</td><td class="number">${money(row.invoiced)}</td><td class="number report-positive">${money(row.received)}</td><td class="number ${row.balance < 0 ? 'report-positive' : row.balance > 0 ? 'report-negative' : ''}">${money(row.balance)}</td></tr>`,
+        `<tr${drillAttr(row.id ? `statement:${row.kind || 'project'}:${row.id}` : '')}><td><b>${esc(row.customer || 'Customer')}</b><small>${esc(row.name)} · ${esc(row.number)}</small></td><td>${date(row.day)}</td><td class="number">${money(row.invoiced)}</td><td class="number report-positive">${money(row.received)}</td><td class="number ${row.balance < 0 ? 'report-positive' : row.balance > 0 ? 'report-negative' : ''}">${money(row.balance)}</td></tr>`,
     );
     if (rows.length) {
       body.push(
@@ -878,7 +881,7 @@
       );
     const body = rows.map(
       (row) =>
-        `<tr><td>${date(row.expense_date)}</td><td><b>${esc(expenseCategory(row.expense_category_id)?.name || row.description || 'Expense')}</b><small>${esc(row.notes || '')}</small></td><td>${esc(targetName(row))}</td><td>${esc(account(row.from_account_id)?.name || 'Charged')}</td><td class="number">${money(row.amount)}</td></tr>`,
+        `<tr${drillAttr(row.project_id ? `profit:project:${row.project_id}` : row.walk_in_order_id ? `profit:order:${row.walk_in_order_id}` : '')}><td>${date(row.expense_date)}</td><td><b>${esc(expenseCategory(row.expense_category_id)?.name || row.description || 'Expense')}</b><small>${esc(row.notes || '')}</small></td><td>${esc(targetName(row))}</td><td>${esc(account(row.from_account_id)?.name || 'Charged')}</td><td class="number">${money(row.amount)}</td></tr>`,
     );
     setOutput(
       rows.length
@@ -925,7 +928,7 @@
       wages = sum(rows, assignmentAmount);
     const body = rows.map(
       (row) =>
-        `<tr><td>${date(row.assignment_date)}</td><td><b>${esc(labourer(row.labourer_id)?.name || 'Labour')}</b><small>${esc(row.notes || '')}</small></td><td>${esc(targetName(row))}</td><td class="number">${qty(row.days)}</td><td class="number">${money(row.daily_rate)}</td><td class="number">${money(assignmentAmount(row))}</td></tr>`,
+        `<tr${drillAttr(row.labourer_id ? `labour:${row.labourer_id}` : '')}><td>${date(row.assignment_date)}</td><td><b>${esc(labourer(row.labourer_id)?.name || 'Labour')}</b><small>${esc(row.notes || '')}</small></td><td>${esc(targetName(row))}</td><td class="number">${qty(row.days)}</td><td class="number">${money(row.daily_rate)}</td><td class="number">${money(assignmentAmount(row))}</td></tr>`,
     );
     setOutput(
       rows.length
@@ -979,7 +982,7 @@
         value = num(row.quantity) * num(row.unit_cost),
         item = material(row.material_id),
         pool = isConsumable(item);
-      return `<tr><td>${date(row.movement_date)}</td><td><b>${esc(item?.name || 'Material')}</b><small>${returned ? 'Returned' : 'Assigned'}${row.notes ? ` · ${esc(row.notes)}` : ''}</small></td><td>${esc(targetName(row))}</td><td class="number">${pool ? 'Amount based' : `${returned ? '−' : ''}${qty(row.quantity)} ${esc(item?.unit || '')}`}</td><td class="number ${returned ? 'report-positive' : ''}">${returned ? '−' : ''}${money(value)}</td></tr>`;
+      return `<tr${drillAttr(row.material_id ? `material:${row.material_id}` : '')}><td>${date(row.movement_date)}</td><td><b>${esc(item?.name || 'Material')}</b><small>${returned ? 'Returned' : 'Assigned'}${row.notes ? ` · ${esc(row.notes)}` : ''}</small></td><td>${esc(targetName(row))}</td><td class="number">${pool ? 'Amount based' : `${returned ? '−' : ''}${qty(row.quantity)} ${esc(item?.unit || '')}`}</td><td class="number ${returned ? 'report-positive' : ''}">${returned ? '−' : ''}${money(value)}</td></tr>`;
     });
     setOutput(
       rows.length
@@ -1073,7 +1076,7 @@
     data.forEach((item) => {
       if (item.openingAmount > 0) {
         body.push(
-          `<tr class="statement-opening"><td><b>Opening balance</b></td><td>${esc(item.supplier.name)}</td><td class="number">${money(item.openingAmount)}</td><td class="number report-positive">${money(item.openingPaid)}</td><td class="number ${item.openingDue > 0 ? 'report-negative' : ''}">${money(item.openingDue)}</td></tr>`,
+          `<tr class="statement-opening drill-row" data-drill="supplier:${esc(item.supplier.id)}" tabindex="0"><td><b>Opening balance</b></td><td>${esc(item.supplier.name)}</td><td class="number">${money(item.openingAmount)}</td><td class="number report-positive">${money(item.openingPaid)}</td><td class="number ${item.openingDue > 0 ? 'report-negative' : ''}">${money(item.openingDue)}</td></tr>`,
         );
         csv.push([
           'Opening balance',
@@ -1086,7 +1089,7 @@
       }
       item.bills.forEach((b) => {
         body.push(
-          `<tr><td><b>${esc(b.billNumber)}</b><small>${date(b.billDate)}</small></td><td>${esc(item.supplier.name)}</td><td class="number">${money(b.totalAmount)}</td><td class="number report-positive">${money(b.amountPaid)}</td><td class="number ${b.balance > 0 ? 'report-negative' : b.balance < 0 ? 'report-positive' : ''}">${money(b.balance)}</td></tr>`,
+          `<tr${drillAttr(`supplier:${item.supplier.id}`)}><td><b>${esc(b.billNumber)}</b><small>${date(b.billDate)}</small></td><td>${esc(item.supplier.name)}</td><td class="number">${money(b.totalAmount)}</td><td class="number report-positive">${money(b.amountPaid)}</td><td class="number ${b.balance > 0 ? 'report-negative' : b.balance < 0 ? 'report-positive' : ''}">${money(b.balance)}</td></tr>`,
         );
         csv.push([b.billNumber, b.billDate, item.supplier.name, b.totalAmount, b.amountPaid, b.balance]);
       });
@@ -1236,7 +1239,7 @@
       totalBalance = sum(rows, (r) => r.balance);
     const body = rows.map(
       (r) =>
-        `<tr><td><b>${esc(r.sup.name)}</b><small>${esc(r.sup.phone || r.sup.company_name || '')}</small></td><td class="number">${money(r.billed)}</td><td class="number report-positive">${money(r.paid)}</td><td class="number ${r.balance > 0 ? 'report-negative' : r.balance < 0 ? 'report-positive' : ''}">${money(r.balance)}</td></tr>`,
+        `<tr${drillAttr(`supplier:${r.sup.id}`)}><td><b>${esc(r.sup.name)}</b><small>${esc(r.sup.phone || r.sup.company_name || '')}</small></td><td class="number">${money(r.billed)}</td><td class="number report-positive">${money(r.paid)}</td><td class="number ${r.balance > 0 ? 'report-negative' : r.balance < 0 ? 'report-positive' : ''}">${money(r.balance)}</td></tr>`,
     );
     if (rows.length) {
       body.push(
@@ -1267,7 +1270,7 @@
       total = sum(rows, (row) => row.total_amount);
     const body = rows.map(
       (row) =>
-        `<tr><td><b>${esc(row.bill_number)}</b><small>${date(row.bill_date)}</small></td><td>${esc(supplier(row.supplier_id)?.name || 'Supplier')}</td><td class="number">${purchaseLines(row.id).length}</td><td class="number">${money(row.subtotal ?? row.total_amount)}</td><td class="number">${money(row.discount)}</td><td class="number">${money(row.total_amount)}</td></tr>`,
+        `<tr${drillAttr(row.supplier_id ? `supplier:${row.supplier_id}` : '')}><td><b>${esc(row.bill_number)}</b><small>${date(row.bill_date)}</small></td><td>${esc(supplier(row.supplier_id)?.name || 'Supplier')}</td><td class="number">${purchaseLines(row.id).length}</td><td class="number">${money(row.subtotal ?? row.total_amount)}</td><td class="number">${money(row.discount)}</td><td class="number">${money(row.total_amount)}</td></tr>`,
     );
     setOutput(
       rows.length
@@ -1398,7 +1401,7 @@
       stockValue = sum(rows, (item) => item.stock * item.unitCost);
     const body = rows.map(
       (item) =>
-        `<tr><td><b>${esc(item.row.name)}</b><small>${esc(item.row.sku || '')}</small></td><td>${esc(item.row.unit)}</td><td class="number ${item.stock < 0 ? 'report-negative' : ''}">${qty(item.stock)}</td><td class="number">${money(item.unitCost)}</td><td class="number">${money(item.stock * item.unitCost)}</td></tr>`,
+        `<tr${drillAttr(`material:${item.row.id}`)}><td><b>${esc(item.row.name)}</b><small>${esc(item.row.sku || '')}</small></td><td>${esc(item.row.unit)}</td><td class="number ${item.stock < 0 ? 'report-negative' : ''}">${qty(item.stock)}</td><td class="number">${money(item.unitCost)}</td><td class="number">${money(item.stock * item.unitCost)}</td></tr>`,
     );
     if (rows.length) {
       body.push(
@@ -1698,7 +1701,9 @@
       labourStatement: renderLabourStatement,
       bankStatement: renderBankStatement,
       partnerDrawings: renderPartnerDrawings,
+      jobProfit: renderJobProfit,
     })[reportState.type]();
+    updateDrillBack();
   }
   function setDefaultReportDates(now = new Date()) {
     // Use the device's calendar date, including around local midnight/month rollover.
@@ -1718,6 +1723,8 @@
     }
     reportState.type = type;
     reportState.scope = 'overall';
+    reportState.drill = null;
+    drillStack.length = 0;
     $('#reportsHubPanel').classList.add('hidden');
     $('#reportViewerPanel').classList.remove('hidden');
     $('#reportTitle').textContent = definitions[type].title;
@@ -1729,6 +1736,7 @@
     $('#reportViewerPanel').classList.add('hidden');
     $('#reportsHubPanel').classList.remove('hidden');
     reportState.type = null;
+    drillStack.length = 0;
     setScreenHeader('reports', 'Reports');
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
@@ -1825,6 +1833,180 @@
       node.remove();
     }
   }
+
+  // ---------- Drill-downs: tap a row to see what is behind it ----------
+  // Profit rows open that project's or order's profit with every cost; receivable and customer
+  // rows open its statement; supplier, labour and material rows open their statements. The
+  // dates you chose are kept, and "Back" returns to the report you came from.
+  const drillStack = [];
+  const filterIds = ['reportFrom', 'reportTo', 'reportAsOf', 'reportProject', 'reportOrder', 'reportSupplier', 'reportMaterial', 'reportLabour', 'reportAccount'];
+  function reportTitleText() {
+    return $('#reportTitle').textContent || definitions[reportState.type]?.title || 'Report';
+  }
+  function snapshotReport() {
+    return {
+      type: reportState.type,
+      scope: reportState.scope,
+      drill: reportState.drill,
+      title: reportTitleText(),
+      filters: Object.fromEntries(filterIds.map((id) => [id, $('#' + id).value])),
+    };
+  }
+  function showReport(type, title) {
+    reportState.type = type;
+    $('#reportTitle').textContent = title;
+    setScreenHeader(`report-${type}`, title);
+    renderCurrent();
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+  function setFilter(id, value) {
+    const el = $('#' + id);
+    if (![...el.options].some((option) => option.value === value)) configureFilters();
+    el.value = value;
+  }
+  function drillTo(spec) {
+    const [target, a, b] = String(spec).split(':');
+    drillStack.push(snapshotReport());
+    if (target === 'profit') {
+      reportState.scope = 'overall';
+      reportState.drill = { kind: a, id: b };
+      const job = a === 'order' ? walkInOrder(b) : project(b);
+      showReport('jobProfit', a === 'order' ? `${job?.order_number || 'Order'} profit` : `${job?.name || 'Project'} profit`);
+    } else if (target === 'statement') {
+      reportState.drill = null;
+      reportState.scope = a === 'order' ? 'orders' : 'projects';
+      reportState.type = 'customerStatement';
+      configureFilters();
+      setFilter(a === 'order' ? 'reportOrder' : 'reportProject', b);
+      if (!$('#reportFrom').value && !$('#reportTo').value && $('#reportAsOf').value) $('#reportTo').value = $('#reportAsOf').value;
+      showReport('customerStatement', 'Customer statement');
+    } else {
+      const to = { supplier: ['supplierStatement', 'reportSupplier'], labour: ['labourStatement', 'reportLabour'], material: ['materialMovement', 'reportMaterial'] }[target];
+      if (!to) {
+        drillStack.pop();
+        return;
+      }
+      reportState.drill = null;
+      reportState.scope = 'overall';
+      reportState.type = to[0];
+      configureFilters();
+      setFilter(to[1], a);
+      showReport(to[0], definitions[to[0]].title);
+    }
+  }
+  function drillBack() {
+    const prev = drillStack.pop();
+    if (!prev) return;
+    reportState.scope = prev.scope;
+    reportState.drill = prev.drill;
+    reportState.type = prev.type;
+    configureFilters();
+    Object.entries(prev.filters).forEach(([id, value]) => {
+      $('#' + id).value = value;
+    });
+    showReport(prev.type, prev.title);
+  }
+  function updateDrillBack() {
+    let back = $('#reportDrillBack');
+    if (!back) {
+      back = document.createElement('button');
+      back.id = 'reportDrillBack';
+      back.type = 'button';
+      back.className = 'report-drill-back hidden';
+      $('#reportContent').before(back);
+    }
+    const prev = drillStack[drillStack.length - 1];
+    back.classList.toggle('hidden', !prev);
+    back.textContent = prev ? `← Back to ${prev.title}` : '';
+  }
+  function renderJobProfit() {
+    const d = reportState.drill || {},
+      isOrder = d.kind === 'order',
+      job = isOrder ? walkInOrder(d.id) : project(d.id);
+    if (!job) {
+      setOutput(reportEmpty('Not found', 'This project or order is no longer in the app.'), []);
+      return;
+    }
+    const mine = (row) => (isOrder ? row.walk_in_order_id === job.id : row.project_id === job.id),
+      metric = isOrder ? null : projectMetrics(job),
+      revenue = isOrder ? num(job.amount) : metric.totalRevenue,
+      lines = [];
+    if (metric) {
+      [['Material', metric.openingMaterial], ['Labour', metric.openingLabour], ['Expense', metric.openingExpenses]].forEach(([type, amount]) => {
+        if (num(amount)) lines.push({ day: '', type, text: `${type} before the app`, sub: 'Opening figure', amount: num(amount) });
+      });
+    }
+    state.materialMovements.filter((row) => mine(row) && (movementOut(row) || movementIn(row))).forEach((row) => {
+      const item = material(row.material_id),
+        sign = movementOut(row) ? 1 : -1;
+      lines.push({
+        day: row.movement_date,
+        type: 'Material',
+        text: `${item?.name || 'Material'} · ${movementName(row.movement_type)}`,
+        sub: `${qty(row.quantity)} ${item?.unit || ''} × ${money(row.unit_cost)}${row.notes ? ` · ${row.notes}` : ''}`,
+        amount: sign * num(row.quantity) * num(row.unit_cost),
+      });
+    });
+    state.labourAssignments.filter(mine).forEach((row) => {
+      lines.push({
+        day: row.assignment_date,
+        type: 'Labour',
+        text: labourer(row.labourer_id)?.name || 'Labour',
+        sub: `${qty(row.days)} day${num(row.days) === 1 ? '' : 's'} × ${money(row.daily_rate)}${row.notes ? ` · ${row.notes}` : ''}`,
+        amount: assignmentAmount(row),
+      });
+    });
+    allExpenseRows().filter(mine).forEach((row) => {
+      lines.push({
+        day: row.expense_date,
+        type: 'Expense',
+        text: expenseCategory(row.expense_category_id)?.name || row.description || 'Expense',
+        sub: row.description && expenseCategory(row.expense_category_id) ? row.description : '',
+        amount: num(row.amount),
+      });
+    });
+    lines.sort((a, b) => String(a.day).localeCompare(String(b.day)));
+    const total = (type) => sum(lines.filter((l) => l.type === type), (l) => l.amount),
+      materials = total('Material'),
+      labour = total('Labour'),
+      expenses = total('Expense'),
+      profit = revenue - materials - labour - expenses,
+      sign = (v) => (v < 0 ? 'report-negative' : 'report-positive');
+    const summary = table(
+      ['Sales', 'Material', 'Labour', 'Expenses', 'Profit'],
+      [`<tr><td class="number">${money(revenue)}</td><td class="number">${money(materials)}</td><td class="number">${money(labour)}</td><td class="number">${money(expenses)}</td><td class="number ${sign(profit)}">${money(profit)}</td></tr>`],
+      'compact',
+    );
+    const body = lines.map(
+      (l) =>
+        `<tr><td>${l.day ? date(l.day) : '—'}</td><td><b>${esc(l.text)}</b><small>${esc(l.type)}${l.sub ? ` · ${esc(l.sub)}` : ''}</small></td><td class="number">${money(l.amount)}</td></tr>`,
+    );
+    if (lines.length)
+      body.push(`<tr class="statement-total"><td></td><td><b>Total costs</b><small>All entries for this ${isOrder ? 'order' : 'project'}</small></td><td class="number">${money(materials + labour + expenses)}</td></tr>`);
+    const receipts = `<p class="report-section-note"><button class="drill-link" type="button" data-drill="statement:${isOrder ? 'order' : 'project'}:${esc(job.id)}">See payments received and balance →</button></p>`;
+    setOutput(
+      summary + receipts + (lines.length ? table(['Date', 'Cost', 'Amount'], body) : reportEmpty('No costs yet', 'No material, labour or expenses are charged to this yet.')),
+      [
+        ['Date', 'Type', 'Cost', 'Details', 'Amount'],
+        ...lines.map((l) => [l.day, l.type, l.text, l.sub, l.amount]),
+        ['', '', 'Total costs', '', materials + labour + expenses],
+        ['', '', 'Sales', '', revenue],
+        ['', '', 'Profit', '', profit],
+      ],
+    );
+  }
+  document.addEventListener('click', (event) => {
+    if (event.target.id === 'reportDrillBack') return drillBack();
+    const row = event.target.closest('#reportContent [data-drill]');
+    if (row) drillTo(row.dataset.drill);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = event.target.closest?.('#reportContent tr[data-drill]');
+    if (!row) return;
+    event.preventDefault();
+    drillTo(row.dataset.drill);
+  });
   document.addEventListener('click', (event) => {
     const open = event.target.closest('[data-open-report]');
     if (open) openReport(open.dataset.openReport);

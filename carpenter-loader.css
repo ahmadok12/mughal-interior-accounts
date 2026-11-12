@@ -1,0 +1,80 @@
+/* Carpenter loading screen (carpenter-loader.js). Mughal Glass colours. */
+.carpenter-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(180deg, #f7f5ef 0%, #f0ede5 100%);
+  color: var(--mg-ink, #132019);
+  opacity: 1;
+  transition: opacity 240ms ease;
+  cursor: default;
+}
+.carpenter-loader.cl-out {
+  opacity: 0;
+  pointer-events: none;
+}
+.cl-figure {
+  width: min(240px, 62vw);
+  aspect-ratio: 240 / 336;
+  background-image: url('assets/carpenter/loader-sprite.webp');
+  background-size: 600% 600%;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+}
+.cl-name {
+  margin: 4px 0 0;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--mg-emerald-900, #113328);
+}
+.cl-line {
+  margin: 0;
+  font-size: 15px;
+  color: var(--mg-muted, #56655d);
+}
+.cl-bar {
+  display: block;
+  width: 200px;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 6px;
+  background: rgba(17, 51, 40, 0.1);
+  overflow: hidden;
+}
+.cl-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--mg-emerald-600, #2a6450), var(--mg-gold-500, #c9a24a));
+}
+.cl-sound {
+  position: absolute;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(201, 162, 74, 0.6);
+  border-radius: 999px;
+  background: rgba(232, 211, 154, 0.3);
+  color: var(--mg-gold-700, #7d5f1c);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .carpenter-loader {
+    transition: none;
+  }
+}
