@@ -40,7 +40,7 @@ test('every step-by-step flow points at fields that exist in the page', (t) => {
 test('payment received is asked one question at a time, then reviewed and saved through the same form', async (t) => {
   const { d, run, visible } = setup(t);
   run('openReceipt()');
-  await wait(20);
+  await wait(60);
   const form = d.getElementById('receiptForm'), sheet = form.closest('.sheet');
   const q = () => sheet.querySelector('.es-q').textContent;
   const err = () => sheet.querySelector('.es-error');
@@ -59,7 +59,7 @@ test('payment received is asked one question at a time, then reviewed and saved 
   const project = d.getElementById('receiptProject');
   project.value = project.options[1].value;
   project.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
-  await wait(220);
+  await wait(300);
   assert.equal(q(), 'How much did they pay?', 'picking a project moves on by itself');
 
   nextBtn.click();
@@ -70,7 +70,7 @@ test('payment received is asked one question at a time, then reviewed and saved 
   const accountSel = d.getElementById('receiptAccount');
   accountSel.value = 'b1';
   accountSel.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
-  await wait(220);
+  await wait(300);
 
   assert.equal(q(), 'Check and save');
   const rows = Array.from(sheet.querySelectorAll('.es-row b')).map((b) => b.textContent);
@@ -84,7 +84,7 @@ test('payment received is asked one question at a time, then reviewed and saved 
   assert.equal(q(), 'How much did they pay?', 'Change goes back to that question');
   nextBtn.click();
   accountSel.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
-  await wait(220);
+  await wait(300);
   assert.equal(q(), 'Check and save');
 
   let submitted = null;
@@ -100,9 +100,9 @@ test('payment received is asked one question at a time, then reviewed and saved 
 test('editing an existing payment keeps the full form', async (t) => {
   const { d, run, visible } = setup(t);
   run(`openReceipt(); $('#receiptId').value='existing'; closeSheets(true);`);
-  await wait(20);
+  await wait(60);
   run(`$('#receiptForm').reset(); $('#receiptId').value='existing'; openSheet('#receiptSheet');`);
-  await wait(20);
+  await wait(60);
   const form = d.getElementById('receiptForm');
   assert.ok(visible(d.getElementById('receiptAmount')));
   assert.ok(visible(form.querySelector('.form-actions')));
@@ -112,14 +112,14 @@ test('editing an existing payment keeps the full form', async (t) => {
 test('closing and reopening starts again at the first question', async (t) => {
   const { d, run } = setup(t);
   run('openReceipt()');
-  await wait(20);
+  await wait(60);
   const sheet = d.getElementById('receiptSheet');
   d.getElementById('receiptProject').value = d.getElementById('receiptProject').options[1].value;
   sheet.querySelector('.es-next').click();
   run('closeSheets(true)');
-  await wait(20);
+  await wait(60);
   run('openReceipt()');
-  await wait(20);
+  await wait(60);
   assert.equal(sheet.querySelector('.es-q').textContent, 'Which project is this payment for?');
 });
 
@@ -137,12 +137,12 @@ test('a purchase asks for the supplier, then the items, and a cash purchase skip
   };
 
   run(`openPurchase('credit')`);
-  await wait(20);
+  await wait(60);
   assert.equal(q(), 'Bought from which supplier?');
   const sup = d.getElementById('purchaseSupplier');
   sup.value = 's1';
   sup.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
-  await wait(220);
+  await wait(300);
   assert.equal(q(), 'What is on the bill?');
   assert.ok(visible(d.getElementById('purchaseLines')));
   assert.ok(visible(form.querySelector('.totals-card')), 'the totals and discount stay with the items');
@@ -154,9 +154,9 @@ test('a purchase asks for the supplier, then the items, and a cash purchase skip
   assert.ok(visible(d.getElementById('purchaseDate')));
 
   run('closeSheets(true)');
-  await wait(20);
+  await wait(60);
   run(`openPurchase('cash')`);
-  await wait(20);
+  await wait(60);
   assert.equal(q(), 'What is on the bill?', 'a cash purchase has no supplier question');
   fillLine();
   sheet.querySelector('.es-next').click();

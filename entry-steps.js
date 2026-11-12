@@ -278,7 +278,7 @@
       let wasOpen = !sheet.classList.contains('hidden');
       new MutationObserver(() => {
         const open = !sheet.classList.contains('hidden');
-        if (open && !wasOpen) setTimeout(() => start(flow), 0); // after the form has been filled in
+        if (open && !wasOpen) start(flow); // openSheet runs after the form has been filled in
         if (!open && wasOpen) stop(flow);
         wasOpen = open;
       }).observe(sheet, { attributes: true, attributeFilter: ['class'] });
